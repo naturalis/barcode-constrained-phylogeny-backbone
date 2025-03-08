@@ -68,7 +68,7 @@ python resolve_polytomies.py \
 ## Project Structure
 
 ```
-polytomy-resolution/
+barcode-constrained-phylogeny-backbone/
 ├── resolve_polytomies.py     # Main script
 ├── polytomy/                 # Core package
 │   ├── __init__.py
@@ -87,10 +87,6 @@ polytomy-resolution/
 └── README.md                 # This file
 ```
 
-## API Documentation
-
-See the [API documentation](docs/api.md) for details on using the library programmatically.
-
 ## Testing
 
 Run the test suite:
@@ -101,16 +97,7 @@ pytest
 
 ## License
 
-[MIT License](LICENSE)
-
-## Citation
-
-If you use this tool in your research, please cite:
-
-```
-Author et al. (2023). Polytomy Resolution Tool: Efficient resolution of 
-large phylogenetic trees. Journal of Open Source Software, X(XX), XXXX.
-```
+[Apache License](LICENSE)
 
 ## Contributing
 
