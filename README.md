@@ -26,14 +26,11 @@ Designed specifically for handling large phylogenies (~50,000 tips) efficiently.
 
 ```bash
 # Clone the repository
-git clone https://github.com/username/polytomy-resolution.git
-cd polytomy-resolution
+git clone https://github.com/naturalis/barcode-constrained-phylogeny-backbone.git
+cd barcode-constrained-phylogeny-backbone
 
 # Install dependencies
-pip install -r requirements.txt
-
-# Install external dependencies (IQTree, RAxML-NG) if not already installed
-# Instructions vary by platform
+conda env create -f environment.yml
 ```
 
 ## Usage
