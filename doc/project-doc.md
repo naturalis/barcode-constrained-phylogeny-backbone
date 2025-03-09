@@ -1,7 +1,3 @@
-I've reviewed the additional document on the polytomy resolution algorithm and will update the project documentation to include these details, particularly around the weighted pruning approach and the full algorithm steps.
-
-Here's the updated project documentation:
-
 # Polytomy Resolution Project Documentation
 
 ## Project Overview
@@ -68,20 +64,17 @@ Here's the updated project documentation:
 - IQTree: primary tool for branch length computation and possible branch swapping on large trees
 - RAxML-NG: alternative for branch length computation on smaller trees or subtrees
 - RAxML (classic): for phylogenetic placement of sequences
-- Bactria pipeline: for the final grafting of family-level subtrees
 
 ### Architecture Design
-We've defined a modular class structure with 7 core components:
-- `TreeParser`: For efficiently parsing large Newick trees with DendroPy
-- `PolytomyFinder`: For identifying polytomies using tree traversal
-- `OpenToLClient`: For interacting with OpenToL APIs with caching
-- `PolytomyResolver`: For resolving polytomies using OpenToL and weighted pruning strategies
-- `BranchLengthOptimizer`: For computing branch lengths using IQTree or RAxML-NG
-- `SequencePlacer`: For placing sequences onto backbone trees
-- `PolytomyResolutionPipeline`: For orchestrating the entire workflow
+We've defined a modular class structure with 6 core components:
+1. `TreeParser`: For efficiently parsing large Newick trees with DendroPy
+2. `PolytomyResolver`: For detecting and resolving polytomies using OpenToL and weighted pruning strategies
+3. `OpenToLClient`: For interacting with OpenToL APIs with caching
+4. `BranchLengthOptimizer`: For computing branch lengths using IQTree or RAxML-NG
+5. `SequencePlacer`: For placing sequences onto backbone trees
+6. `PolytomyResolutionPipeline`: For orchestrating the entire workflow
 
 ### Design Patterns
-We've incorporated several design patterns:
 - Facade Pattern in the pipeline class for overall orchestration
 - Strategy Pattern for branch length optimization selection
 - Adapter Pattern for OpenToL API integration
@@ -98,7 +91,6 @@ We've incorporated several design patterns:
 - Efficient propagation of annotations through tree transformations
 
 ### Robustness Features
-We've added numerous features for production robustness:
 - Comprehensive logging throughout the codebase
 - Detailed error handling and fallback mechanisms
 - Performance optimizations for large trees
@@ -110,10 +102,9 @@ We've added numerous features for production robustness:
 - Comprehensive test coverage using pytest
 - Unit tests for each component:
   - `tree_parser.py`: Tests for parsing Newick trees from files and strings
-  - `polytomy_finder.py`: Tests for identifying polytomies in tree structures
-  - `opentol_client.py`: Tests for taxon name resolution and API interactions
-  - `branch_optimizer.py`: Tests for branch length optimization with IQTree/RAxML-NG
-  - `polytomy_resolver.py`: Tests for polytomy resolution logic
+  - `polytomy_resolver.py`: Tests for polytomy detection and resolution logic
+  - `opentol_client.py`: Tests for taxon name resolution and API interactions- 
+  - `branch_optimizer.py`: Tests for branch length optimization with IQTree/RAxML-NG  - 
   - `sequence_placer.py`: Tests for sequence placement algorithms
   - `pipeline.py`: Integration tests for the complete workflow
 - Real-world test data from the example tree included in the project
@@ -166,9 +157,8 @@ polytomy-resolution/
 ├── polytomy/                 # Core package
 │   ├── __init__.py
 │   ├── tree_parser.py        # Tree parsing functionality
-│   ├── polytomy_finder.py    # Polytomy identification
 │   ├── opentol_client.py     # OpenToL API client
-│   ├── polytomy_resolver.py  # Polytomy resolution logic
+│   ├── polytomy_resolver.py  # Polytomy detection and resolution
 │   ├── branch_optimizer.py   # Branch length optimization
 │   ├── sequence_placer.py    # Sequence placement
 │   └── pipeline.py           # Pipeline orchestration
@@ -177,7 +167,6 @@ polytomy-resolution/
 │   │   ├── example_tree.tre  # Example tree with polytomies
 │   │   └── example_alignment.fa # Alignment for testing
 │   ├── test_tree_parser.py   # Tests for tree parser
-│   ├── test_polytomy_finder.py # Tests for polytomy finder
 │   ├── test_opentol_client.py # Tests for OpenToL client
 │   └── ...                   # Additional test modules
 ├── examples/                 # Example files and tutorials
