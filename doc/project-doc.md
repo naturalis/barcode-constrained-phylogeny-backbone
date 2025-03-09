@@ -1,10 +1,12 @@
-I've reviewed the progress in our current chat and compared it to the existing project documentation. Here's an updated summary that incorporates the new developments:
+I've reviewed the additional document on the polytomy resolution algorithm and will update the project documentation to include these details, particularly around the weighted pruning approach and the full algorithm steps.
+
+Here's the updated project documentation:
 
 # Polytomy Resolution Project Documentation
 
 ## Project Overview
 - This project aims to develop a Python tool for resolving polytomies (multifurcating nodes) in phylogenetic trees using the Open Tree of Life (OpenToL) API.
-- The pipeline processes a Newick format tree, identifies polytomies, and attempts to resolve them through a combination of OpenToL-based resolution and minimal-loss pruning.
+- The pipeline processes a Newick format tree, identifies polytomies, and attempts to resolve them through a combination of OpenToL-based resolution and weighted minimal-loss pruning.
 - Once resolved, the tree undergoes branch length computation and can incorporate additional sequences through phylogenetic placement.
 - The tool is designed to handle large-scale phylogenies with approximately 50,000 tips, requiring highly optimized processing strategies.
 - This solution specifically replaces the problematic `prep_raxml_backbone`, `run_raxml_backbone`, and `reroot_backbone` steps in the Bactria pipeline when dealing with the full BOLD database (approximately 10M records).
@@ -24,19 +26,37 @@ I've reviewed the progress in our current chat and compared it to the existing p
 - Extract branching order information from OpenToL subtrees
 - Apply this branching information to resolve polytomies in the original tree
 - Batch API requests where possible to minimize network overhead
-- Handle "mrca" nodes (e.g., "mrcaott170987ott201497") correctly as legitimate internal nodes
 
-### Polytomy Resolution Strategy
-1. **Primary Resolution**: Use OpenToL topology to inform polytomy resolution where possible
-2. **Handling Partial Resolution**: For partially resolved nodes (containing both resolved subtrees and unresolved direct children):
-   - Keep the resolved portion as one child
-   - Select one unresolved taxon to keep (preferably one with multiple descendants) as the second child
-   - Prune all other unresolved taxa
-3. **Information Loss Minimization**: When choosing which unresolved taxon to keep, prioritize those with more descendant tips
-4. **Optimization**: Compute branch lengths on the resolved topology using IQTree (preferred for large trees) or RAxML-NG
+### Polytomy Resolution Algorithm
+1. **Tree Annotation**:
+   - Annotate tree with tip counts, pruned tips lists, and OTT IDs
+   - Calculate tip counts in post-order traversal (children before parents)
+
+2. **OpenToL-based Resolution**:
+   - Extract taxon names from polytomy child nodes
+   - Resolve names to OTT IDs using OpenToL TNRS API
+   - Fetch induced subtree from OpenToL based on these OTT IDs
+   - Apply OpenToL topology to resolve the polytomy
+   - Special handling for MRCA nodes and polyphyletic subtrees
+
+3. **Weighted Pruning Strategy**:
+   - When OpenToL resolution fails or is partial:
+     - Sort child nodes by tip count (ascending)
+     - Keep the two largest children (those with most tips)
+     - Prune the smaller children
+     - Track pruned tips by their process IDs (leaf labels)
+   - This ensures minimal information loss while achieving bifurcation
+
+4. **Post-Resolution Processing**:
+   - Compute branch lengths using BranchOptimizer
+   - Place pruned sequences back onto the backbone
+   - Graft family-level subtrees
+
+### Branch Length Optimization
+- Compute branch lengths on the resolved topology using IQTree (preferred for large trees) or RAxML-NG
+- Ensure all branch lengths are proportional and biologically plausible
 
 ### Sequence Integration
-- Track all pruned taxa for later reintegration via placement
 - Place pruned tips and unplaced sequences onto the backbone tree
 - Support for grafting family-level subtrees using the Bactria pipeline's `graft_clades` step
 
@@ -55,7 +75,7 @@ We've defined a modular class structure with 7 core components:
 - `TreeParser`: For efficiently parsing large Newick trees with DendroPy
 - `PolytomyFinder`: For identifying polytomies using tree traversal
 - `OpenToLClient`: For interacting with OpenToL APIs with caching
-- `PolytomyResolver`: For resolving polytomies using OpenToL and pruning strategies
+- `PolytomyResolver`: For resolving polytomies using OpenToL and weighted pruning strategies
 - `BranchLengthOptimizer`: For computing branch lengths using IQTree or RAxML-NG
 - `SequencePlacer`: For placing sequences onto backbone trees
 - `PolytomyResolutionPipeline`: For orchestrating the entire workflow
@@ -75,7 +95,7 @@ We've incorporated several design patterns:
 - Parallel processing of independent subtrees where applicable
 - Memory profiling and optimization for large tree structures
 - Use of IQTree for faster branch length calculation on large phylogenies
-- Potential implementation of custom, streamlined tree data structures for specific operations
+- Efficient propagation of annotations through tree transformations
 
 ### Robustness Features
 We've added numerous features for production robustness:
@@ -84,6 +104,7 @@ We've added numerous features for production robustness:
 - Performance optimizations for large trees
 - Data caching to minimize API calls
 - Configuration flexibility for all components
+- Special handling for MRCA nodes and polyphyletic subtrees
 
 ### Testing Strategy
 - Comprehensive test coverage using pytest
@@ -98,15 +119,32 @@ We've added numerous features for production robustness:
 - Real-world test data from the example tree included in the project
 - Tests designed to work even when external tools or APIs are unavailable
 
-### Core Functions
-- Tree parsing and traversal with memory efficiency
-- Polytomy detection with indexing to avoid repeated traversals
-- OpenToL taxon name resolution with batched requests
-- OpenToL subtree retrieval and interpretation
-- Polytomy resolution based on OpenToL information
-- Minimal-loss pruning for unresolved polytomies
-- Branch length computation using IQTree (primary) or RAxML-NG (alternative)
-- Sequence placement and subtree grafting
+### Key Algorithm Steps
+1. **Tree Annotation**:
+   - Use DendroPy annotations to store tip counts, pruned lists, and OTT IDs
+   - Calculate tip counts in post-order (children before parents)
+
+2. **Polytomy Identification**:
+   - Find all nodes with more than two children during tree traversal
+   - Process in post-order sequence (children before parents)
+
+3. **OpenToL Resolution**:
+   - Extract taxon names from child nodes
+   - Resolve names to OTT IDs via OpenToL TNRS API
+   - Fetch induced subtree from OpenToL API
+   - Apply OpenToL topology to resolve polytomy
+   - Special handling for MRCA nodes (polyphyletic subtrees)
+
+4. **Weighted Pruning**:
+   - Sort child nodes by tip count (ascending)
+   - Keep the two largest children (most tips)
+   - Prune smaller children to achieve bifurcation
+   - Track pruned tips for later placement
+
+5. **Post-Resolution Processing**:
+   - Compute branch lengths
+   - Place pruned sequences back
+   - Graft family-level subtrees
 
 ### Code Structure
 - Following nbitk coding style with its configuration and logging system
@@ -158,12 +196,8 @@ polytomy-resolution/
      - Resolve names to OTT IDs using OpenToL TNRS API (batched where possible)
      - Request induced subtree from OpenToL
      - Apply subtree topology to resolve polytomy
-   - For partially resolved polytomies:
-     - Keep the resolved portion as one child
-     - Select one unresolved taxon to keep (preferably one with multiple descendants)
-     - Prune all other unresolved taxa
-   - For completely unresolvable polytomies:
-     - Apply minimal-loss pruning strategy
+     - If OpenToL resolution fails, apply weighted pruning strategy
+   - Annotations (tip counts, pruned lists, OTT IDs) are propagated throughout
 3. **Optimization**:
    - Compute branch lengths using IQTree (preferred for 50k tip trees)
    - Consider limited branch swapping if needed using IQTree
@@ -175,15 +209,14 @@ polytomy-resolution/
 - API rate limiting and error handling for OpenToL requests
 - Handling cases where OpenToL lacks information for certain taxa
 - Managing computational efficiency and memory usage for trees with ~50,000 tips
-- Balancing information loss when pruning is necessary
+- Minimizing tip loss when pruning is necessary
+- Special handling for MRCA nodes and polyphyletic subtrees
 - Ensuring compatibility with the existing Bactria pipeline
 - Optimizing the transition between different computational tools (DendroPy, IQTree, RAxML)
 - Scaling to handle the full BOLD database with approximately 10M records
-- Properly handling MRCA nodes returned by OpenToL API
 
 ## Future Extensions
 - Parallelization of API requests and tree operations
 - Caching of OpenToL responses to improve efficiency
-- Alternative resolution strategies when OpenToL information is unavailable
-- Integration with additional phylogenetic resources beyond OpenToL
-- Development of specialized data structures for handling extremely large trees
+- Improved handling of polyphyletic groups in OpenToL data
+- Refinement of the weighted pruning strategy based on empirical results
