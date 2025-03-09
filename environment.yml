@@ -1,4 +1,4 @@
-name: barcode_constraint_phylogeny_backbone
+name: barcode-constrained-phylogeny-backbone
 channels:
   - bioconda
   - conda-forge
