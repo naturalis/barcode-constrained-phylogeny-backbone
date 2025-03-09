@@ -24,13 +24,19 @@ I've reviewed the progress in our current chat and compared it to the existing p
 - Extract branching order information from OpenToL subtrees
 - Apply this branching information to resolve polytomies in the original tree
 - Batch API requests where possible to minimize network overhead
+- Handle "mrca" nodes (e.g., "mrcaott170987ott201497") correctly as legitimate internal nodes
 
 ### Polytomy Resolution Strategy
 1. **Primary Resolution**: Use OpenToL topology to inform polytomy resolution where possible
-2. **Secondary Resolution**: For remaining polytomies, resolve by pruning descendant subtrees to minimize tip loss
-3. **Optimization**: Compute branch lengths on the resolved topology using IQTree (preferred for large trees) or RAxML-NG
+2. **Handling Partial Resolution**: For partially resolved nodes (containing both resolved subtrees and unresolved direct children):
+   - Keep the resolved portion as one child
+   - Select one unresolved taxon to keep (preferably one with multiple descendants) as the second child
+   - Prune all other unresolved taxa
+3. **Information Loss Minimization**: When choosing which unresolved taxon to keep, prioritize those with more descendant tips
+4. **Optimization**: Compute branch lengths on the resolved topology using IQTree (preferred for large trees) or RAxML-NG
 
 ### Sequence Integration
+- Track all pruned taxa for later reintegration via placement
 - Place pruned tips and unplaced sequences onto the backbone tree
 - Support for grafting family-level subtrees using the Bactria pipeline's `graft_clades` step
 
@@ -152,7 +158,11 @@ polytomy-resolution/
      - Resolve names to OTT IDs using OpenToL TNRS API (batched where possible)
      - Request induced subtree from OpenToL
      - Apply subtree topology to resolve polytomy
-   - For remaining polytomies:
+   - For partially resolved polytomies:
+     - Keep the resolved portion as one child
+     - Select one unresolved taxon to keep (preferably one with multiple descendants)
+     - Prune all other unresolved taxa
+   - For completely unresolvable polytomies:
      - Apply minimal-loss pruning strategy
 3. **Optimization**:
    - Compute branch lengths using IQTree (preferred for 50k tip trees)
@@ -169,6 +179,7 @@ polytomy-resolution/
 - Ensuring compatibility with the existing Bactria pipeline
 - Optimizing the transition between different computational tools (DendroPy, IQTree, RAxML)
 - Scaling to handle the full BOLD database with approximately 10M records
+- Properly handling MRCA nodes returned by OpenToL API
 
 ## Future Extensions
 - Parallelization of API requests and tree operations
