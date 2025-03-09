@@ -1,4 +1,4 @@
-Here's the updated project documentation that incorporates all the progress we've made:
+I've reviewed the progress in our current chat and compared it to the existing project documentation. Here's an updated summary that incorporates the new developments:
 
 # Polytomy Resolution Project Documentation
 
@@ -79,6 +79,19 @@ We've added numerous features for production robustness:
 - Data caching to minimize API calls
 - Configuration flexibility for all components
 
+### Testing Strategy
+- Comprehensive test coverage using pytest
+- Unit tests for each component:
+  - `tree_parser.py`: Tests for parsing Newick trees from files and strings
+  - `polytomy_finder.py`: Tests for identifying polytomies in tree structures
+  - `opentol_client.py`: Tests for taxon name resolution and API interactions
+  - `branch_optimizer.py`: Tests for branch length optimization with IQTree/RAxML-NG
+  - `polytomy_resolver.py`: Tests for polytomy resolution logic
+  - `sequence_placer.py`: Tests for sequence placement algorithms
+  - `pipeline.py`: Integration tests for the complete workflow
+- Real-world test data from the example tree included in the project
+- Tests designed to work even when external tools or APIs are unavailable
+
 ### Core Functions
 - Tree parsing and traversal with memory efficiency
 - Polytomy detection with indexing to avoid repeated traversals
@@ -117,18 +130,16 @@ polytomy-resolution/
 │   └── pipeline.py           # Pipeline orchestration
 ├── tests/                    # Test files
 │   ├── data/                 # Test data
-│   └── ...                   # Test modules
+│   │   ├── example_tree.tre  # Example tree with polytomies
+│   │   └── example_alignment.fa # Alignment for testing
+│   ├── test_tree_parser.py   # Tests for tree parser
+│   ├── test_polytomy_finder.py # Tests for polytomy finder
+│   ├── test_opentol_client.py # Tests for OpenToL client
+│   └── ...                   # Additional test modules
 ├── examples/                 # Example files and tutorials
 ├── requirements.txt          # Python dependencies
-└── README.md                 # This file
+└── README.md                 # Project documentation
 ```
-
-### Testing Strategy
-- Comprehensive test coverage using pytest
-- Minimal use of mock objects
-- Test scripts and data maintained in project folder
-- Validation against known resolved topologies
-- Performance benchmarking for large tree handling
 
 ## Workflow
 
