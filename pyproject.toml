@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "barcode-constrained-phylogeny-backbone"
+version = "0.1.0"
+description = "A tool for resolving polytomies in large phylogenetic trees using the Open Tree of Life API"
+readme = "README.md"
+authors = [
+    {name = "Rutger Vos", email = "rutger.vos@naturalis.nl"}
+]
+license = {text = "Apache License 2.0"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "dendropy",
+    "requests",
+    "nbitk",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/naturalis/barcode-constrained-phylogeny-backbone"
+"Bug Tracker" = "https://github.com/naturalis/barcode-constrained-phylogeny-backbone/issues"
+
+[project.scripts]
+resolve_polytomies = "resolve_polytomies:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
