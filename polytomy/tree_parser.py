@@ -134,7 +134,7 @@ class TreeParser:
             'suppress_internal_node_taxa': True,
             'suppress_leaf_node_taxa': False,
             'case_sensitive_taxon_labels': False,
-            'suppress_annotations': True,
+            #'suppress_annotations': True,
         }
 
         # Add any schema-specific settings from config
