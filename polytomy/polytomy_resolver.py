@@ -10,6 +10,9 @@ import logging
 import random
 from collections import defaultdict, deque
 
+from polytomy.tree_parser import TreeParser
+from polytomy.polytomy_finder import PolytomyFinder
+
 
 class PolytomyResolver:
     """Handles resolution of polytomies using various strategies."""
@@ -112,9 +115,11 @@ class PolytomyResolver:
 
         # Extract the topology information
         try:
-            # Use DendroPy to parse the induced subtree
-            import dendropy
-            opentol_tree = dendropy.Tree.get(data=newick, schema="newick")
+            # Use TreeParser to parse the induced subtree
+            parser = TreeParser(config={
+                'schema': {'preserve_underscores': True, 'case_sensitive_taxon_labels': True }
+            })
+            opentol_tree = parser.parse_from_string(newick)
 
             # Build a resolution plan based on the OpenToL tree
             resolution_plan = self._extract_topology_from_opentol_tree(opentol_tree, node_to_ott_map)
@@ -213,8 +218,6 @@ class PolytomyResolver:
         Returns:
             tuple: (resolved_count, failed_count, pruned_tips)
         """
-        from polytomy.polytomy_finder import PolytomyFinder
-
         # Find all polytomies
         finder = PolytomyFinder(self.tree)
         polytomies = finder.find_all_polytomies()
