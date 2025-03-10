@@ -43,32 +43,33 @@ class PolytomyResolver:
         # Return value?
         # resolved_count, failed_count, pruned_tips
 
-    def resolve_polytomy(self, node):
+    def resolve_polytomy(self, polytomy):
         """
         Resolve a polytomy node using opentol and pruning strategies.
 
         """
-        if node is None or not node.is_internal() or len(node.child_nodes()) < 3:
+        if polytomy is None or not polytomy.is_internal() or len(polytomy.child_nodes()) < 3:
             return False
-        leaves = [c for c in node.leaf_nodes()]
+        leaves = [c for c in polytomy.leaf_nodes()]
 
-        # Step 1: Get OTT IDs for all children
-        ott_ids = self._tnrs_children(node)
+        # Step 1: Get OTT IDs for all immediate children
+        ott_ids = self._tnrs_children(polytomy)
 
         # Step 2: Integrate induced subtree from OpenToL
-        self._opentol_subtree(node, ott_ids)
+        self._opentol_subtree(polytomy, ott_ids)
 
         # Step 3: Handle MRCA leaves
         pattern = r"mrcaott(\d+)ott(\d+)"
-        for leaf in node.leaf_nodes():
+        for leaf in polytomy.leaf_nodes():
             if re.match(pattern, leaf.taxon.label):
-                self._handle_mrca_leaf(leaves, leaf)
+                # self._handle_mrca_leaf(leaves, leaf)
+                leaf.parent_node.remove_child(leaf)
 
         # Step 4: Propagate annotations
-        self.propagate_all_annotations(node)
+        self.propagate_all_annotations(polytomy)
 
         # Step 5: Weighted prune
-        for n in node.postorder_iter():
+        for n in polytomy.postorder_iter():
             if len(n.child_nodes()) > 2:
                 self.weighted_prune(n)
 
@@ -97,7 +98,7 @@ class PolytomyResolver:
         for node in root.postorder_iter():
             self._propagate_annotations(node)
 
-    def _opentol_subtree(self, node, ott_ids):
+    def _opentol_subtree(self, polytomy, ott_ids):
         """
         Get an induced subtree from OpenToL for a set of OTT IDs.
         """
@@ -110,7 +111,8 @@ class PolytomyResolver:
         })
         opentol_tree = parser.parse_from_string(newick)
 
-        # Graft the grandchildren of the input node to the tips in the opentol tree
+        # Iterate over the tips of the opentol tree. Clean up labels. Match with the polytomy's children.
+        matches = []
         for leaf in opentol_tree.leaf_node_iter():
 
             # If leaf label matches '_ott' pattern, clean it up for matching
@@ -122,15 +124,20 @@ class PolytomyResolver:
                     leaf.taxon.label = parts[0]
 
                     # Name match the node's children and graft their children on the leaf
-                    for c in node.child_nodes():
+                    for c in polytomy.child_nodes():
                         if c.label == leaf.taxon.label:
-                            for gc in c.child_nodes():
-                                leaf.add_child(gc)
+                            matches.append([leaf, c])
                             break
+
+        # Graft the matched nodes
+        for match in matches:
+            leaf, node = match
+            polytomy.remove_child(node)
+            leaf.add_child(node)
 
         # Graft the opentol tree to the input node
         for c in opentol_tree.seed_node.child_nodes():
-            node.add_child(c)
+            polytomy.add_child(c)
 
     def _tnrs_children(self, node):
         """
@@ -231,9 +238,8 @@ class PolytomyResolver:
                         otol_node.clear_child_nodes()
                         is_mapped[parent.label] = True
 
-                    for c in parent.child_nodes():
-                        otol_node.add_child(c)
-                    break
+                    # Graft the leaf to the OpenToL node
+                    otol_node.add_child(leaf)
 
         # Do a postorder traversal on the opentol subtree to identify unmapped tips
         tips_to_prune = []
@@ -245,6 +251,8 @@ class PolytomyResolver:
 
         # Prune the tips
         for tip in tips_to_prune:
-            tip.edge.tail_node.remove_child(tip)
+            tip.parent_node.remove_child(tip)
 
-
+        # Graft the opentol tree to the input node
+        for c in opentol_tree.seed_node.child_nodes():
+            opentol_leaf.add_child(c)
