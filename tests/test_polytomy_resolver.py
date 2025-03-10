@@ -15,7 +15,6 @@ from pathlib import Path
 
 # Import modules to test
 from polytomy.tree_parser import TreeParser
-from polytomy.polytomy_finder import PolytomyFinder
 from polytomy.opentol_client import OpenToLClient
 from polytomy.polytomy_resolver import PolytomyResolver
 
