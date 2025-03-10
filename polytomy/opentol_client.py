@@ -21,6 +21,7 @@ class OpenToLClient:
     OPENTOL_API_BASE = "https://api.opentreeoflife.org/v3"
     TNRS_MATCH_NAMES_URL = f"{OPENTOL_API_BASE}/tnrs/match_names"
     INDUCED_SUBTREE_URL = f"{OPENTOL_API_BASE}/tree_of_life/induced_subtree"
+    SUBTREE_URL = f"{OPENTOL_API_BASE}/tree_of_life/subtree"
     MRCA_URL = f"{OPENTOL_API_BASE}/tree_of_life/mrca"
 
     # Maximum number of taxon names per batch for TNRS
@@ -116,6 +117,41 @@ class OpenToLClient:
 
         return results
 
+    def get_subtree(self, node_id):
+        """
+        Get induced subtree from OpenToL using OTT IDs.
+
+        Args:
+            node_id (str): ID of the subtree , e.g. mrcaott170987ott201497
+
+        Returns:
+            dict: Induced subtree response containing topology information.
+        """
+        if self.skip_opentol:
+            self.logger.warning("Skipping OpenToL subtree request (API queries disabled)")
+            return None
+
+        if not node_id:
+            self.logger.warning("Node node ID provided to get_subtree")
+            return None
+
+        self.logger.info(f"Fetching subtree subtended by {node_id}")
+
+        # Check cache first
+        cache_key = self._make_cache_key('subtree', node_id)
+        cached_result = self._get_from_cache('subtree', cache_key)
+        if cached_result:
+            self.logger.debug(f"Using cached subtree result for {node_id} root")
+            return cached_result
+
+        # Prepare request
+        payload = {
+            'node_id': node_id
+        }
+
+        # Make request
+        return self._do_request(cache_key, payload, self.SUBTREE_URL)
+
     def get_induced_subtree(self, ott_ids):
         """
         Get induced subtree from OpenToL using OTT IDs.
@@ -160,10 +196,16 @@ class OpenToLClient:
         }
 
         # Make request
+        return self._do_request(cache_key, payload, self.INDUCED_SUBTREE_URL)
+
+    def _do_request(self, cache_key, payload, url):
+        """
+        Perform an API request with retries.
+        """
         for attempt in range(self.retries):
             try:
                 response = requests.post(
-                    self.INDUCED_SUBTREE_URL,
+                    url,
                     json=payload,
                     headers={'Content-Type': 'application/json'},
                     timeout=self.timeout
@@ -178,7 +220,7 @@ class OpenToLClient:
                     return result
                 else:
                     self.logger.warning(
-                        f"Failed to get induced subtree: {response.status_code} - {response.text}"
+                        f"Failed to get subtree: {response.status_code} - {response.text}"
                     )
 
             except requests.RequestException as e:
@@ -186,9 +228,7 @@ class OpenToLClient:
 
             # Wait before retry
             time.sleep(self.rate_limit * (2 ** attempt))
-
-        self.logger.error(f"Failed to get induced subtree after {self.retries} attempts")
-        return None
+        self.logger.error(f"Failed to get subtree after {self.retries} attempts")
 
     def get_mrca(self, ott_ids):
         """
