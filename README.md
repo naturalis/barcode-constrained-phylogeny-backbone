@@ -54,7 +54,6 @@ python resolve_polytomies.py \
   --optimization-tool iqtree \
   --sequences additional_seqs.fasta \
   --alignment alignment.fasta \
-  --family-subtrees family_dir/ \
   --log-level INFO
 ```
 
