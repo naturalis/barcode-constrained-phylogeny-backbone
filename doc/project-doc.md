@@ -29,10 +29,13 @@ This is discussed in more detail in the [Polytomy Resolution Algorithm](resoluti
 ### Branch Length Optimization
 - Compute branch lengths on the resolved topology using IQTree (preferred for large trees) or RAxML-NG
 - Ensure all branch lengths are proportional and biologically plausible
+- Investigate outliers, maybe contaminants (like Wolbachia); consider pruning
 
 ### Sequence Integration
 - Place pruned tips and unplaced sequences onto the backbone tree
 - Support for grafting family-level subtrees using the Bactria pipeline's `graft_clades` step
+- Consider using just one of an exemplar pair in initial resolved backbone and placement
+- Graft other member of pair later, to guarantee exemplar monophyly, then re-optimize
 
 ## Implementation Details
 
