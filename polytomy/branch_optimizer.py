@@ -107,6 +107,7 @@ class BranchLengthOptimizer:
             self.logger.info("Branch length optimization completed")
             return optimized_tree
 
+    # Fix for BranchLengthOptimizer.run_iqtree method
     def run_iqtree(self, alignment_path, tree_path, working_dir):
         """
         Run IQTree for branch length optimization.
@@ -131,7 +132,7 @@ class BranchLengthOptimizer:
             "-mem", self.memory,
             "-fixbr",  # Fix tree topology, optimize branch lengths only
             "-quiet",
-            "-prefix", os.path.join(working_dir, self.prefix)
+            "-pre", os.path.join(working_dir, self.prefix)  # Fixed: -pre instead of -prefix
         ]
 
         # Add any additional options from config
@@ -181,22 +182,45 @@ class BranchLengthOptimizer:
         """
         self.logger.info("Running RAxML-NG for branch length optimization")
 
-        # Build command
+        # Create an unrooted version of the tree for RAxML-NG
+        import dendropy
+        unrooted_tree_path = os.path.join(working_dir, "unrooted_input.tree")
+
+        try:
+            # Read the original tree
+            tree = dendropy.Tree.get(path=tree_path, schema="newick")
+
+            # Unroot the tree
+            tree.is_rooted = False
+
+            # Suppress unifurcations (collapsing unbranched interior nodes)
+            tree.suppress_unifurcations()
+
+            # Write the unrooted tree
+            tree.write(
+                path=unrooted_tree_path,
+                schema="newick",
+                suppress_rooting=True,
+                suppress_internal_node_labels=True,
+                suppress_leaf_taxon_labels=False,
+                suppress_leaf_node_labels=False,
+                suppress_edge_lengths=False,
+                unquoted_underscores=True
+            )
+        except Exception as e:
+            self.logger.error(f"Error creating unrooted tree: {str(e)}")
+            return None
+
+        # Build command using the unrooted tree
         cmd = [
             "raxml-ng",
             "--evaluate",
             "--msa", alignment_path,
-            "--tree", tree_path,
+            "--tree", unrooted_tree_path,
             "--model", self.model,
             "--threads", str(self.threads),
-            "--opt-branches",  # Optimize branch lengths
-            "--no-opt-model",  # Don't optimize model parameters
             "--prefix", os.path.join(working_dir, self.prefix)
         ]
-
-        # Add any additional options from config
-        if 'raxml_options' in self.config:
-            cmd.extend(self.config['raxml_options'])
 
         # Execute command
         try:
@@ -208,6 +232,10 @@ class BranchLengthOptimizer:
                 text=True,
                 check=False
             )
+
+            # Log the full output for debugging
+            self.logger.debug(f"RAxML-NG stdout: {result.stdout}")
+            self.logger.debug(f"RAxML-NG stderr: {result.stderr}")
 
             # Check for errors
             if result.returncode != 0:
