@@ -33,6 +33,10 @@ cd barcode-constrained-phylogeny-backbone
 conda env create -f environment.yml
 ```
 
+<!--
+
+Top-level driver script not tested yet!!!
+
 ## Usage
 
 Basic usage:
@@ -53,6 +57,8 @@ python resolve_polytomies.py \
   --family-subtrees family_dir/ \
   --log-level INFO
 ```
+
+-->
 
 ## Dependencies
 
