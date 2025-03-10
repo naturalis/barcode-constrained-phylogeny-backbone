@@ -13,7 +13,6 @@ from pathlib import Path
 
 # Import pipeline components
 from polytomy.tree_parser import TreeParser
-from polytomy.polytomy_finder import PolytomyFinder
 from polytomy.opentol_client import OpenToLClient
 from polytomy.polytomy_resolver import PolytomyResolver
 from polytomy.branch_optimizer import BranchLengthOptimizer
@@ -111,32 +110,9 @@ class PolytomyResolutionPipeline:
         self.logger.info("Starting polytomy resolution")
         self.stats['start_time'] = time.time()
 
-        # Find polytomies
-        finder = PolytomyFinder(self.tree)
-        polytomies = finder.find_all_polytomies()
-        self.stats['polytomy_count'] = len(polytomies)
-
-        if self.stats['polytomy_count'] == 0:
-            self.logger.info("No polytomies found in tree")
-            self.resolved_tree = self.tree
-            return True
-
-        self.logger.info(f"Found {self.stats['polytomy_count']} polytomies")
-
         # Resolve polytomies
         resolver = PolytomyResolver(self.tree, self.opentol_client)
-        resolved_count, failed_count, pruned_tips = resolver.resolve_all_polytomies()
-
-        self.stats['resolved_count'] = resolved_count
-        self.stats['pruned_tips'] = pruned_tips
-
-        # Check if resolution was successful
-        if failed_count > 0:
-            self.logger.warning(f"Failed to resolve {failed_count} polytomies")
-
-        if resolved_count == 0:
-            self.logger.error("No polytomies were resolved")
-            return False
+        resolver.resolve_all_polytomies()
 
         # Store the resolved tree
         self.resolved_tree = self.tree
@@ -146,8 +122,6 @@ class PolytomyResolutionPipeline:
         self.stats['elapsed_time'] = self.stats['end_time'] - self.stats['start_time']
 
         self.logger.info(f"Polytomy resolution completed in {self.stats['elapsed_time']:.2f} seconds")
-        self.logger.info(f"Resolved {resolved_count}/{self.stats['polytomy_count']} polytomies")
-        self.logger.info(f"Pruned {len(pruned_tips)} tips")
 
         return True
 
