@@ -26,11 +26,11 @@ The first phase involves annotating the tree with essential information:
 
 2. For each node:
    - Use DendroPy annotations to store additional information, whose keys are:
-     - `tip_count`: Number of tips in the subtree rooted at this node
+     - `size`: Number of tips in the subtree rooted at this node
      - `pruned`: List of pruned tip labels (BOLD process IDs) for this node
      - `ott_id`: OTT ID of the taxon represented by this node (if known)
-   - If leaf node: set `tip_count = 1`, `pruned = []`
-   - If internal node: set `tip_count = sum(child.tip_count for all children)`
+   - If leaf node: set `size = 1`, `pruned = []`
+   - If internal node: set `size = sum(child.annotations['size'].value for all children)`
    - If internal node: make pruned the union of all children's pruned lists
    - If internal node is polytomous, apply resolution, i.e. Step 3 during this traversal
 
@@ -76,50 +76,10 @@ MRCA nodes from OpenToL (e.g., "mrcaott170987ott201497") require special handlin
 4. If still polytomous, apply weighted pruning (see 3.3)
 5. Propagate annotations through the new structure
 
+**Note**: This is so tricky due to the different polyphyly patterns that we skip this for now.
+
 ### Step 5: Post-Resolution Processing
 After all polytomies are resolved:
-
-1. Compute branch lengths using BranchOptimizer
-2. Place pruned sequences back onto the backbone
-3. Graft family-level subtrees
-
-## Key Considerations
-
-### Tip Count Propagation
-- Tip counts are calculated in post-order (children before parents)
-- Whenever the tree structure changes, tip counts must be decremented
-- This process ensures accurate weighting for pruning decisions
-
-### OpenToL Subtree Integration
-- The entire hierarchical structure from OpenToL is copied over, not just immediate children
-- Name matching is done by matching the name of the OpenToL leaf (stripped of _ott\d+) with the name
-  of the deepest non-branching (i.e. child count == 1) node in the original tree
-- After removing unmatched leaves, weighted pruning may need to be applied, possibly recursively 
-- Annotations must be propagated through the new structure
-
-### MRCA Node Handling
-- MRCA nodes from OpenToL represent polyphyletic subtrees
-- These are marked as "broken" in the returned JSON
-- We attempt to salvage these by grafting the focal subtrees at the appropriate point
-- Extraneous tips added by OpenToL are removed
-- If still polytomous, weighted pruning is applied
-
-### Weighted Pruning Strategy
-- When a node remains polytomous after OpenToL resolution:
-  - Sort child nodes by tip count (ascending)
-  - Keep the two largest children (with most tips)
-  - Prune the smaller children
-- This ensures minimal information loss while achieving bifurcation
-
-### Resolution Tracking
-- Use DendroPy node annotations to track resolution progress
-- Maintain counts of:
-  - Total nodes resolved
-  - Nodes resolved via OpenToL
-  - Nodes resolved via pruning
-- Also track all pruned tips for later placement
-
-## Post-Resolution Steps
 
 1. **Branch Length Computation**
    - Use BranchOptimizer to compute branch lengths on the resolved tree

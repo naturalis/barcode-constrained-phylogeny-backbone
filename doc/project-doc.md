@@ -24,29 +24,8 @@
 - Batch API requests where possible to minimize network overhead
 
 ### Polytomy Resolution Algorithm
-1. **Tree Annotation**:
-   - Annotate tree with tip counts, pruned tips lists, and OTT IDs
-   - Calculate tip counts in post-order traversal (children before parents)
 
-2. **OpenToL-based Resolution**:
-   - Extract taxon names from polytomy child nodes
-   - Resolve names to OTT IDs using OpenToL TNRS API
-   - Fetch induced subtree from OpenToL based on these OTT IDs
-   - Apply OpenToL topology to resolve the polytomy
-   - Special handling for MRCA nodes and polyphyletic subtrees
-
-3. **Weighted Pruning Strategy**:
-   - When OpenToL resolution fails or is partial:
-     - Sort child nodes by tip count (ascending)
-     - Keep the two largest children (those with most tips)
-     - Prune the smaller children
-     - Track pruned tips by their process IDs (leaf labels)
-   - This ensures minimal information loss while achieving bifurcation
-
-4. **Post-Resolution Processing**:
-   - Compute branch lengths using BranchOptimizer
-   - Place pruned sequences back onto the backbone
-   - Graft family-level subtrees
+This is discussed in more detail in the [Polytomy Resolution Algorithm](resolution-pruning.md) document.
 
 ### Branch Length Optimization
 - Compute branch lengths on the resolved topology using IQTree (preferred for large trees) or RAxML-NG
@@ -83,10 +62,7 @@ We've defined a modular class structure with 6 core components:
 - Composite Pattern for tree structure representation
 
 ### Performance Optimization
-- Chunked tree processing to manage memory consumption
 - Strategic caching of API responses to reduce redundant network calls
-- Parallel processing of independent subtrees where applicable
-- Memory profiling and optimization for large tree structures
 - Use of IQTree for faster branch length calculation on large phylogenies
 - Efficient propagation of annotations through tree transformations
 
@@ -109,33 +85,6 @@ We've defined a modular class structure with 6 core components:
   - `pipeline.py`: Integration tests for the complete workflow
 - Real-world test data from the example tree included in the project
 - Tests designed to work even when external tools or APIs are unavailable
-
-### Key Algorithm Steps
-1. **Tree Annotation**:
-   - Use DendroPy annotations to store tip counts, pruned lists, and OTT IDs
-   - Calculate tip counts in post-order (children before parents)
-
-2. **Polytomy Identification**:
-   - Find all nodes with more than two children during tree traversal
-   - Process in post-order sequence (children before parents)
-
-3. **OpenToL Resolution**:
-   - Extract taxon names from child nodes
-   - Resolve names to OTT IDs via OpenToL TNRS API
-   - Fetch induced subtree from OpenToL API
-   - Apply OpenToL topology to resolve polytomy
-   - Special handling for MRCA nodes (polyphyletic subtrees)
-
-4. **Weighted Pruning**:
-   - Sort child nodes by tip count (ascending)
-   - Keep the two largest children (most tips)
-   - Prune smaller children to achieve bifurcation
-   - Track pruned tips for later placement
-
-5. **Post-Resolution Processing**:
-   - Compute branch lengths
-   - Place pruned sequences back
-   - Graft family-level subtrees
 
 ### Code Structure
 - Following nbitk coding style with its configuration and logging system
