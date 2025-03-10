@@ -58,11 +58,6 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--family-subtrees", "-f",
-        help="Directory containing family-level subtrees to graft"
-    )
-
-    parser.add_argument(
         "--optimization-tool",
         choices=["iqtree", "raxml-ng"],
         default="iqtree",
@@ -99,12 +94,6 @@ def parse_args():
         "--no-place-sequences",
         action="store_true",
         help="Skip placement of pruned and additional sequences"
-    )
-
-    parser.add_argument(
-        "--no-graft-subtrees",
-        action="store_true",
-        help="Skip grafting of family-level subtrees"
     )
 
     parser.add_argument(
@@ -170,11 +159,6 @@ def main():
         if args.sequences and not args.no_place_sequences:
             logger.info(f"Placing additional sequences from {args.sequences}")
             pipeline.place_additional_sequences(args.sequences)
-
-        # Graft family subtrees if provided
-        if args.family_subtrees and not args.no_graft_subtrees:
-            logger.info(f"Grafting family subtrees from {args.family_subtrees}")
-            pipeline.graft_family_subtrees(args.family_subtrees)
 
         # Write output tree
         logger.info(f"Writing resolved tree to {args.output}")
