@@ -13,7 +13,7 @@
 - Parse Newick format trees using the DendroPy library
 - Traverse tree structures efficiently in post-order (children before parents)
 - Identify interior nodes with more than two children (polytomies)
-- Record node information including taxon names and relationships
+- Record node information including OTT IDs using DendroPy annotations
 - Implement memory-efficient algorithms to handle trees with ~50,000 tips
 
 ### OpenToL API Integration
@@ -21,7 +21,6 @@
 - Request induced subtrees from the OpenToL API based on OTT IDs
 - Extract branching order information from OpenToL subtrees
 - Apply this branching information to resolve polytomies in the original tree
-- Batch API requests where possible to minimize network overhead
 
 ### Polytomy Resolution Algorithm
 
