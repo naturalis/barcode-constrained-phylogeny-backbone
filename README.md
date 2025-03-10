@@ -79,7 +79,9 @@ barcode-constrained-phylogeny-backbone/
 ├── tests/                    # Test files
 │   ├── data/                 # Test data
 │   └── ...                   # Test modules
-├── examples/                 # Example files and tutorials
+├── environment.yml           # Conda dependencies
+├── LICENSE                   # Apache 2.0 license
+├── pyproject.toml            # Python package metadata
 ├── requirements.txt          # Python dependencies
 └── README.md                 # This file
 ```
