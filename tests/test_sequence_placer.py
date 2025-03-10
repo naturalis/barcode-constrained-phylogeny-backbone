@@ -91,7 +91,7 @@ def test_initialization(backbone_tree):
     # Default settings
     placer = SequencePlacer(backbone_tree)
     assert placer.threads == 1
-    assert placer.model == "GTR+G"
+    assert placer.model == "GTRGAMMA"
     assert placer.prefix == "seq_placement"
     assert placer.keep_files is False
     assert placer.output_dir == '.'
@@ -99,14 +99,14 @@ def test_initialization(backbone_tree):
     # Custom settings
     config = {
         'threads': 4,
-        'model': "JC+G",
+        'model': "GTRCAT",
         'prefix': "custom_prefix",
         'keep_files': True,
         'output_dir': "/tmp/output"
     }
     placer = SequencePlacer(backbone_tree, config=config)
     assert placer.threads == 4
-    assert placer.model == "JC+G"
+    assert placer.model == "GTRCAT"
     assert placer.prefix == "custom_prefix"
     assert placer.keep_files is True
     assert placer.output_dir == "/tmp/output"
