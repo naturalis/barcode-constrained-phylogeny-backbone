@@ -37,8 +37,9 @@ jobs:
         conda activate barcode-constrained-phylogeny-backbone
         conda list
         which python
-        which blastn
-        which hmmalign
+        which iqtree
+        which raxml-ng
+        which raxmlHPC
 
     - name: Lint with flake8
       shell: bash -l {0}
