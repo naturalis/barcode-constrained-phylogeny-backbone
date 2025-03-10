@@ -9,4 +9,5 @@ The `tests/data` directory contains the following files:
 5. `output_not_in_tree.fasta`: A FASTA file with sequence data, does not match tips in 3
 6. `example_tree_resolved.tre`: A resolved Newick tree file, based on 3 but sparser
 7. `example_tree_iqtree.tre`: A Newick tree file with branch lengths optimized by IQTree, based on 4 and 6
-8. `outfile-labels-internals.tre`: A Newick tree file, based on taxonomy from backbone alignment
+8. `outfile-labels-internals.tre`: A huge Newick tree file, based on taxonomy from backbone alignment
+9. `example_tree_epa.tree`: A Newick tree file with sequence placement, based on 7 and 2
