@@ -1,7 +1,7 @@
-# Polytomy Resolution Project Documentation
+# Bactria backbone resolution
 
 ## Project Overview
-- This project aims to develop a Python tool for resolving polytomies (multifurcating nodes) in phylogenetic trees using the Open Tree of Life (OpenToL) API.
+- This project aims to tooling for resolving polytomies (multifurcating nodes) in BOLD taxonomic trees using the Open Tree of Life (OpenToL) API.
 - The pipeline processes a Newick format tree, identifies polytomies, and attempts to resolve them through a combination of OpenToL-based resolution and weighted minimal-loss pruning.
 - Once resolved, the tree undergoes branch length computation and can incorporate additional sequences through phylogenetic placement.
 - The tool is designed to handle large-scale phylogenies with approximately 50,000 tips, requiring highly optimized processing strategies.
