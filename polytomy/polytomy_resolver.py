@@ -155,26 +155,29 @@ class PolytomyResolver:
         """
         ott_ids = []
         for c in node.child_nodes():
-            if c.is_leaf():
 
-                # Should be impossible to get here because we should only
-                # have terminal cherries due to exemplar selection
-                raise RuntimeError
+            # If the child has an OTT ID, we don't need to resolve it
+            ott_id = c.annotations['ott_id'].value
+            if ott_id:
+                ott_ids.append(ott_id)
+                continue
 
+            # Sometimes we arrive at a leaf, after pruning. It probably
+            # still doesn't have a taxon, but we can check.
+            if c.taxon:
+                taxon_name = c.taxon.label
             else:
-                ott_id = c.annotations['ott_id'].value
-                if ott_id:
-                    ott_ids.append(ott_id)
-                    continue
-
-                # We need to resolve the OTT ID for this node
                 taxon_name = c.label
-                if taxon_name:
-                    result = self.opentol_client.resolve_names([taxon_name])
-                    if result and taxon_name in result and result[taxon_name]:
-                        ott_id = result[taxon_name]['ott_id']
-                        c.annotations['ott_id'] = ott_id
-                        ott_ids.append(ott_id)
+
+            # Resolve the taxon name to an OTT ID
+            if taxon_name:
+                result = self.opentol_client.resolve_names([taxon_name])
+                if result and taxon_name in result and result[taxon_name]:
+                    ott_id = result[taxon_name]['ott_id']
+                    c.annotations['ott_id'] = ott_id
+                    ott_ids.append(ott_id)
+
+        # Return the list of OTT IDs
         return ott_ids
 
     def weighted_prune(self, polytomy):
@@ -195,7 +198,8 @@ class PolytomyResolver:
 
         # Keep the two largest children, so start iteration at 3rd element
         pruned = set()
-        for i, (child, _) in enumerate(child_list[2:], start=2):
+        count = 0
+        for i, (child, weight) in enumerate(child_list[2:], start=2):
 
             # Child may have already been propagated previous pruning results
             pruned = pruned.union(child.annotations['pruned'].value)
@@ -203,7 +207,8 @@ class PolytomyResolver:
             # Child may subtend leaves whose labels we want to record
             for leaf in child.leaf_nodes():
 
-                # TODO: why is this happening? Leaves should always have a taxon
+                # If we graft an OTOL subtree and it has an MRCA node, nothing is grafted on top
+                # so it doesn't have a taxon.
                 if leaf.taxon:
                     pruned.add(leaf.taxon.label)
                 else:
@@ -212,9 +217,11 @@ class PolytomyResolver:
                     self.logger.warning(f"Leaf node {leaf} has no taxon")
 
             # Now we can remove the child
+            count += weight
             polytomy.remove_child(child)
 
         polytomy.annotations['pruned'] = pruned
+        self.logger.info(f"Pruned {count} tips from {polytomy.label}")
 
     def _handle_mrca_leaf(self, leaves, opentol_leaf):
         """
