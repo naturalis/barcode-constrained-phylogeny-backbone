@@ -36,6 +36,7 @@ This is discussed in more detail in the [Polytomy Resolution Algorithm](resoluti
 - Support for grafting family-level subtrees using the Bactria pipeline's `graft_clades` step
 - Consider using just one of an exemplar pair in initial resolved backbone and placement
 - Graft other member of pair later, to guarantee exemplar monophyly, then re-optimize
+- Get exemplair pair list from MaaS C11G
 
 ## Implementation Details
 
