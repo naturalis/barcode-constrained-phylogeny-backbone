@@ -28,7 +28,7 @@ class OpenToLClient:
     MAX_NAMES_PER_BATCH = 1000
 
     # Maximum number of OTT IDs per induced subtree request
-    MAX_IDS_PER_SUBTREE = 500
+    MAX_IDS_PER_SUBTREE = 5000
 
     def __init__(self, config=None):
         """
@@ -113,7 +113,7 @@ class OpenToLClient:
         unresolved = [name for name in taxon_names if name in results and results[name] is None]
         if unresolved:
             percent_unresolved = len(unresolved) / len(taxon_names) * 100
-            self.logger.warning(f"Could not resolve {len(unresolved)} names ({percent_unresolved:.1f}%)")
+            self.logger.warning(f"Could not resolve {len(unresolved)} names ({percent_unresolved:.1f}%): {taxon_names}")
 
         return results
 
