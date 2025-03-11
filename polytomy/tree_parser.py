@@ -83,7 +83,7 @@ class TreeParser:
         Raises:
             ValueError: If the string cannot be parsed as a Newick tree.
         """
-        self.logger.info("Parsing tree from string")
+        self.logger.debug("Parsing tree from string")
 
         try:
             # Configure memory-optimized schema settings
