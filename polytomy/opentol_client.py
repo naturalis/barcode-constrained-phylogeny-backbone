@@ -85,7 +85,7 @@ class OpenToLClient:
             self.logger.warning("Skipping OpenToL name resolution (API queries disabled)")
             return {name: None for name in taxon_names}
 
-        self.logger.info(f"Resolving {len(taxon_names)} taxon names")
+        self.logger.debug(f"Resolving {len(taxon_names)} taxon names")
 
         # Remove duplicates while preserving order
         unique_names = []
@@ -171,6 +171,7 @@ class OpenToLClient:
             return None
 
         self.logger.info(f"Fetching induced subtree for {len(ott_ids)} OTT IDs")
+        self.logger.info(f"OTT IDs: {ott_ids}")
 
         # If too many IDs, split into batches and combine results
         if len(ott_ids) > self.MAX_IDS_PER_SUBTREE:
@@ -219,9 +220,14 @@ class OpenToLClient:
 
                     return result
                 else:
+
+                    # Failed first time, may be recoverable
                     self.logger.warning(
                         f"Failed to get subtree: {response.status_code} - {response.text}"
                     )
+                    cache_key, payload, url = self._recoverable_payload(cache_key, payload, url, response)
+                    if cache_key and payload and url:
+                        return self._do_request(cache_key, payload, url)
 
             except requests.RequestException as e:
                 self.logger.warning(f"Request error (attempt {attempt + 1}/{self.retries}): {str(e)}")
@@ -229,6 +235,32 @@ class OpenToLClient:
             # Wait before retry
             time.sleep(self.rate_limit * (2 ** attempt))
         self.logger.error(f"Failed to get subtree after {self.retries} attempts")
+
+    def _recoverable_payload(self, cache_key, payload, url, response):
+
+        # Handle pruned OTT IDs: If we remove them from the payload, we can retry
+        # 400 - {
+        #     "message": "[/v3/tree_of_life/induced_subtree] Error: node_id 'ott7851091' was not found!",
+        #     "unknown": {
+        #         "ott7851091": "pruned_ott_id"
+        #     }
+        # }
+        if response.status_code == 400:
+            try:
+                error_data = response.json()
+                if 'unknown' in error_data:
+
+                    # Extract unknown OTT IDs and strip the 'ott' prefix
+                    pruned_ids = list(error_data['unknown'].keys())
+                    pruned_ids = [int(ott_id[3:]) for ott_id in pruned_ids]
+                    self.logger.warning(f"Pruned OTT IDs detected, will remove from payload: {pruned_ids}")
+
+                    # Remove pruned IDs and return the updated request
+                    payload['ott_ids'] = [ott_id for ott_id in payload['ott_ids'] if ott_id not in pruned_ids]
+                    return cache_key, payload, url
+            except Exception as e:
+                self.logger.warning(f"Failed to parse error response: {str(e)}")
+
 
     def get_mrca(self, ott_ids):
         """
