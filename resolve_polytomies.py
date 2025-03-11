@@ -132,9 +132,6 @@ def main():
         },
         'placer': {
             'skip_placement': args.no_place_sequences,
-        },
-        'subtrees': {
-            'skip_grafting': args.no_graft_subtrees,
         }
     }
 
@@ -170,7 +167,7 @@ def main():
 
     except Exception as e:
         logger.error(f"Error during polytomy resolution: {str(e)}")
-        logger.debug("Exception details:", exc_info=True)
+        logger.error("Exception details:", exc_info=True)
         return 1
 
     return 0
