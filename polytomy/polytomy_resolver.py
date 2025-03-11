@@ -51,19 +51,28 @@ class PolytomyResolver:
         if polytomy is None or not polytomy.is_internal() or len(polytomy.child_nodes()) < 3:
             return False
         leaves = [c for c in polytomy.leaf_nodes()]
+        self.logger.info(f"Resolving polytomy for {polytomy.label}")
 
         # Step 1: Get OTT IDs for all immediate children
         ott_ids = self._tnrs_children(polytomy)
 
         # Step 2: Integrate induced subtree from OpenToL
-        self._opentol_subtree(polytomy, ott_ids)
+        # Need to be defensive about the TNRS results:
+        # if we have fewer than 3 OTT IDs, there's no subtree
+        if len(ott_ids) > 2:
+            self._opentol_subtree(polytomy, ott_ids)
 
         # Step 3: Handle MRCA leaves
         pattern = r"mrcaott(\d+)ott(\d+)"
         for leaf in polytomy.leaf_nodes():
-            if re.match(pattern, leaf.taxon.label):
-                # self._handle_mrca_leaf(leaves, leaf)
-                leaf.parent_node.remove_child(leaf)
+            if leaf.taxon:
+                if re.match(pattern, leaf.taxon.label):
+                    # self._handle_mrca_leaf(leaves, leaf)
+                    leaf.parent_node.remove_child(leaf)
+            else:
+                if re.match(pattern, leaf.label):
+                    leaf.parent_node.remove_child(leaf)
+                self.logger.warning(f"Leaf node {leaf} has no taxon in handling MRCA leaves")
 
         # Step 4: Propagate annotations
         self.propagate_all_annotations(polytomy)
@@ -139,6 +148,7 @@ class PolytomyResolver:
         for c in opentol_tree.seed_node.child_nodes():
             polytomy.add_child(c)
 
+    # TODO: run me as a batch job
     def _tnrs_children(self, node):
         """
         Resolve taxon names to OTT IDs for all children of a node.
@@ -192,7 +202,14 @@ class PolytomyResolver:
 
             # Child may subtend leaves whose labels we want to record
             for leaf in child.leaf_nodes():
-                pruned.add(leaf.taxon.label)
+
+                # TODO: why is this happening? Leaves should always have a taxon
+                if leaf.taxon:
+                    pruned.add(leaf.taxon.label)
+                else:
+
+                    # Seem to be mrca nodes, whose pruning we don't need to track anyway...
+                    self.logger.warning(f"Leaf node {leaf} has no taxon")
 
             # Now we can remove the child
             polytomy.remove_child(child)
