@@ -92,3 +92,19 @@ def get_taxon_name(node):
     return None
 
 
+def test_homonym(opentol_client):
+
+    # Because we're just building the COI tree we go with the default, Animals, in the service calls
+    animal_match = opentol_client.resolve_names(["Leucoptera"], 'Insects')
+    assert animal_match is not None
+    assert animal_match['Leucoptera']['ott_id'] == 1092264
+
+    plant_match = opentol_client.resolve_names(["Leucoptera"], 'Asteraceae')
+    assert plant_match is not None
+    assert plant_match['Leucoptera']['ott_id'] == 1058485
+
+def test_synonym(opentol_client):
+
+    # 'Aromobatinae'
+    match = opentol_client.resolve_names(["Aromobatidae"], 'Amphibians')
+    assert match is not None
