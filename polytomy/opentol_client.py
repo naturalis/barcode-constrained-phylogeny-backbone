@@ -69,7 +69,7 @@ class OpenToLClient:
         if self.skip_opentol:
             self.logger.warning("OpenToL API queries are disabled (skip_opentol=True)")
 
-    def resolve_names(self, taxon_names, context=None):
+    def resolve_names(self, taxon_names, context='Animals'):
         """
         Resolve taxon names to OTT IDs using TNRS API.
 
