@@ -6,7 +6,6 @@ A tool for resolving polytomies in phylogenetic trees using the Open Tree of Lif
 This script serves as the command-line interface to the polytomy resolution pipeline.
 """
 
-import os
 import sys
 import argparse
 import logging
