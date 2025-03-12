@@ -194,9 +194,16 @@ class PolytomyResolver:
             polytomy.remove_child(polytomy_child)
 
             # Replace the matched opentol leaf by the polytomy child
-            parent = opentol_leaf.parent_node
-            parent.remove_child(opentol_leaf)
-            parent.add_child(polytomy_child)
+            if opentol_leaf.parent_node:
+                parent = opentol_leaf.parent_node
+                parent.remove_child(opentol_leaf)
+                parent.add_child(polytomy_child)
+            else:
+
+                # It may be the case that the opentol leaf is the root of the tree,
+                # after all pruning and grafting. In this case, we need to add the
+                # polytomy child as a child of the open tol leaf.
+                opentol_leaf.add_child(polytomy_child)
 
         # Here we graft the opentol root's children onto the polytomy.
         for opentol_root_child in opentol_tree.seed_node.child_nodes():
