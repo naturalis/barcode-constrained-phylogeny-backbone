@@ -222,9 +222,7 @@ class OpenToLClient:
                 else:
 
                     # Failed first time, may be recoverable
-                    self.logger.warning(
-                        f"Failed to get subtree: {response.status_code} - {response.text}"
-                    )
+                    self.logger.warning(f"Failed to get subtree: {response.status_code}")
                     cache_key, payload, url = self._recoverable_payload(cache_key, payload, url, response)
                     if cache_key and payload and url:
                         return self._do_request(cache_key, payload, url)
