@@ -174,6 +174,19 @@ class PolytomyResolver:
         matches = []
         for opentol_leaf in opentol_tree.leaf_node_iter():
 
+            # Clean up taxon labels by removing parenthetical statements inside them. OpenToL
+            # appears to insert this if and only if the taxon is a homonym, in which case
+            # the parenthetical statement clarifies the homonym, e.g.:
+            #
+            # `Lauterborniella (genus in kingdom Archaeplastida) ott5153036`
+            #
+            # Given that we are already within the right tree area, we can safely remove this.
+            # To enable downstream matching, we replace the parenthetical statement with an underscore:
+            #
+            # `Lauterborniella_ott5153036`
+            pattern = r'\s*\([^)]*\)\s*'
+            opentol_leaf.taxon.label = re.sub(pattern, '_', opentol_leaf.taxon.label).strip()
+
             # If leaf label matches '_ott' pattern, clean it up for matching
             if '_ott' in opentol_leaf.taxon.label:
                 parts = opentol_leaf.taxon.label.split('_ott')
@@ -191,7 +204,10 @@ class PolytomyResolver:
             opentol_leaf, polytomy_child = match
 
             # Remove the current child from the polytomy
-            polytomy.remove_child(polytomy_child)
+            if polytomy_child.parent_node and polytomy_child.parent_node == polytomy:
+                polytomy.remove_child(polytomy_child)
+            else:
+                self.logger.warning(f"Child {polytomy_child.label} not found in polytomy {polytomy.label}")
 
             # Replace the matched opentol leaf by the polytomy child
             if opentol_leaf.parent_node:
@@ -237,6 +253,9 @@ class PolytomyResolver:
             result = self.opentol_client.resolve_names(taxon_names)
             for taxon_name in taxon_names:
                 if result and taxon_name in result and result[taxon_name]:
+
+                    # TODO: Check if the result is a synonym
+                    # i.e. result[taxon_name]['is_synonym'] == True
                     ott_id = result[taxon_name]['ott_id']
                     ott_ids[taxon_name] = ott_id
 
