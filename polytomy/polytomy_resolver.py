@@ -88,10 +88,12 @@ class PolytomyResolver:
 
     def remove_mrca_tips(self, polytomy: Node) -> int:
         """
-        Remove MRCA leaves from a polytomy node.
+        Remove MRCA tips from a polytomy node. If needed, this is a
+        traversal operation that prunes along the path from the tip
+        to the nearest node that has other children.
 
         :param polytomy: The polytomy node to prune.
-        :return: The number of MRCA leaves removed.
+        :return: The number of MRCA tips removed.
         """
         self.logger.debug(f"Removing MRCA leaves from {polytomy}")
         pattern = r"mrcaott(\d+)ott(\d+)"
@@ -110,7 +112,13 @@ class PolytomyResolver:
                 count += 1
 
                 # We traverse from the leaf up to the polytomy node
-                # We break when the parent still has children after the prune
+                # We break when the parent still has 1+ children after the prune, i.e.
+                #            /\                 /\
+                #           /  \               /  \
+                #          /\   \              \   \
+                #         /  \   \              \   \
+                #       mrca  A   B     ->       A   B
+
                 while node != polytomy:
                     parent = node.parent_node
                     parent.remove_child(node)
@@ -141,6 +149,8 @@ class PolytomyResolver:
     def propagate_all_annotations(self, root: Node = None) -> None:
         """
         Propagate subtended tip number from all tips to focal node or root.
+        This is typically called after attempting to resolve a polytomy via
+        OpenToL grafts but before weighted pruning.
 
         :param root: The root node to propagate annotations to.
         """
@@ -175,7 +185,7 @@ class PolytomyResolver:
         for opentol_leaf in opentol_tree.leaf_node_iter():
 
             # Clean up taxon labels by removing parenthetical statements inside them. OpenToL
-            # appears to insert this if and only if the taxon is a homonym, in which case
+            # appears to insert these if and only if the taxon is a homonym, in which case
             # the parenthetical statement clarifies the homonym, e.g.:
             #
             # `Lauterborniella (genus in kingdom Archaeplastida) ott5153036`
@@ -187,7 +197,8 @@ class PolytomyResolver:
             pattern = r'\s*\([^)]*\)\s*'
             opentol_leaf.taxon.label = re.sub(pattern, '_', opentol_leaf.taxon.label).strip()
 
-            # If leaf label matches '_ott' pattern, clean it up for matching
+            # If leaf label matches '_ott' pattern, clean it up for matching. Note that this is
+            # the general case for monophyletic, named, opentol leaves with ott taxon IDs.
             if '_ott' in opentol_leaf.taxon.label:
                 parts = opentol_leaf.taxon.label.split('_ott')
                 if len(parts) > 1 and parts[1].isdigit():
@@ -199,17 +210,17 @@ class PolytomyResolver:
                             matches.append([opentol_leaf, polytomy_child])
                             break
 
-        # Graft the matched nodes
+        # Iterate over the matches and replace the polytomy children with the opentol leaves
         for match in matches:
             opentol_leaf, polytomy_child = match
 
-            # Remove the current child from the polytomy
+            # Remove the current child from the polytomy, incorporating any topological resolution from OpenToL
             if polytomy_child.parent_node and polytomy_child.parent_node == polytomy:
                 polytomy.remove_child(polytomy_child)
             else:
                 self.logger.warning(f"Child {polytomy_child.label} not found in polytomy {polytomy.label}")
 
-            # Replace the matched opentol leaf by the polytomy child
+            # Replace the matched opentol leaf by the polytomy child, thereby extending the lineage to the process IDs
             if opentol_leaf.parent_node:
                 parent = opentol_leaf.parent_node
                 parent.remove_child(opentol_leaf)
@@ -251,11 +262,23 @@ class PolytomyResolver:
         # taking them out of the pool of polytomy children.
         if len(taxon_names) > 1:
             result = self.opentol_client.resolve_names(taxon_names)
+
+            # Iterate over the taxon names and get the OTT ID
             for taxon_name in taxon_names:
                 if result and taxon_name in result and result[taxon_name]:
 
                     # TODO: Check if the result is a synonym
-                    # i.e. result[taxon_name]['is_synonym'] == True
+                    # i.e. if result[taxon_name]['is_synonym']:
+                    if result[taxon_name]['is_synonym']:
+                        self.logger.info(f"Taxon {taxon_name} is a synonym")
+                    ott_id = result[taxon_name]['ott_id']
+                    ott_ids[taxon_name] = ott_id
+
+            # Also iterate over the result to get the OTT ID
+            for taxon_name in result:
+                if result[taxon_name]:
+                    if result[taxon_name]['is_synonym']:
+                        self.logger.info(f"Taxon {taxon_name} is a synonym")
                     ott_id = result[taxon_name]['ott_id']
                     ott_ids[taxon_name] = ott_id
 
@@ -273,11 +296,11 @@ class PolytomyResolver:
         child_list = []
         for c in polytomy.child_nodes():
 
-            # The weight is the number of tips in the subtree
+            # The 'size' is the number of tips in the subtree
             size = int(c.annotations['size'].value)
             child_list.append((c, size))
 
-        # Sort children by weight in descending order
+        # Sort children by 'size' in descending order
         child_list.sort(key=lambda x: x[1], reverse=True)
 
         # Keep the two largest children, so start iteration at 3rd element
