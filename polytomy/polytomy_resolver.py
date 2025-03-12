@@ -9,6 +9,7 @@ information and minimal-loss pruning strategies.
 import re
 import logging
 from polytomy.tree_parser import TreeParser
+from dendropy.datamodel.treemodel import Node
 
 class PolytomyResolver:
     """Handles resolution of polytomies using various strategies."""
@@ -34,7 +35,7 @@ class PolytomyResolver:
         for node in self.tree.postorder_node_iter():
 
             # Propagate annotations from children to parent node
-            self._propagate_annotations(node)
+            self.propagate_annotations(node)
 
             # Node is polytomy, resolve it
             if len(node.child_nodes()) > 2:
@@ -43,38 +44,39 @@ class PolytomyResolver:
         # Return value?
         # resolved_count, failed_count, pruned_tips
 
-    def resolve_polytomy(self, polytomy):
+    def resolve_polytomy(self, polytomy: Node) -> bool:
         """
         Resolve a polytomy node using opentol and pruning strategies.
 
+        :param polytomy: The polytomy node to resolve.
+        :return: True if the polytomy was resolved, False otherwise.
         """
+
+        # Nothing to be done if focal node is None, is not internal, or is bifurcating
         if polytomy is None or not polytomy.is_internal() or len(polytomy.child_nodes()) < 3:
             return False
-        leaves = [c for c in polytomy.leaf_nodes()]
+
         self.logger.info(f"Resolving polytomy for {polytomy.label}")
 
         # Step 1: Get OTT IDs for all immediate children
-        ott_ids = self._tnrs_children(polytomy)
+        ott_ids = self.map_opentol_children(polytomy)
 
         # Step 2: Integrate induced subtree from OpenToL
         # Need to be defensive about the TNRS results:
         # if we have fewer than 3 OTT IDs, there's no subtree
         if len(ott_ids) > 2:
-            self._opentol_subtree(polytomy, ott_ids)
+            self.graft_induced_subtree(polytomy, ott_ids)
 
-        # Step 3: Handle MRCA leaves
-        pattern = r"mrcaott(\d+)ott(\d+)"
-        for leaf in polytomy.leaf_nodes():
-            if leaf.taxon:
-                if re.match(pattern, leaf.taxon.label):
-                    # self._handle_mrca_leaf(leaves, leaf)
-                    leaf.parent_node.remove_child(leaf)
-            else:
-                if re.match(pattern, leaf.label):
-                    leaf.parent_node.remove_child(leaf)
-                self.logger.warning(f"Leaf node {leaf} has no taxon in handling MRCA leaves")
+        # Step 3: Remove MRCA leaves
+        # If a clade is polyphyletic, OpenToL marks this as 'broken' and
+        # returns a leaf with a name like 'mrcaott1234ott5678'. We need to
+        # remove these leaves from the tree because fetching the subtree
+        # (different endpoint) gives a mess that is very hard to resolve in
+        # any general way.
+        count = self.remove_mrca_tips(polytomy)
+        self.logger.info(f"Removed {count} MRCA leaves from {polytomy}")
 
-        # Step 4: Propagate annotations
+        # Step 4: Propagate annotations from tips to focal node
         self.propagate_all_annotations(polytomy)
 
         # Step 5: Weighted prune
@@ -82,36 +84,84 @@ class PolytomyResolver:
             if len(n.child_nodes()) > 2:
                 self.weighted_prune(n)
 
-    def _propagate_annotations(self, node):
+        return True
+
+    def remove_mrca_tips(self, polytomy: Node) -> int:
         """
-        Propagate annotations from children to parent node.
+        Remove MRCA leaves from a polytomy node.
+
+        :param polytomy: The polytomy node to prune.
+        :return: The number of MRCA leaves removed.
         """
+        self.logger.debug(f"Removing MRCA leaves from {polytomy}")
+        pattern = r"mrcaott(\d+)ott(\d+)"
+        count = 0
+        for leaf in polytomy.leaf_nodes():
+
+            # There is probably no taxon if this is an mrca node
+            if leaf.taxon:
+                taxon_name = leaf.taxon.label
+            else:
+                taxon_name = leaf.label
+
+            # If the taxon name matches the pattern, remove the leaf recursively
+            if re.match(pattern, taxon_name):
+                node = leaf
+                count += 1
+
+                # We traverse from the leaf up to the polytomy node
+                # We break when the parent still has children after the prune
+                while node != polytomy:
+                    parent = node.parent_node
+                    parent.remove_child(node)
+                    if parent.is_internal():
+                        break
+                    node = parent
+        return count
+
+    def propagate_annotations(self, node: Node) -> None:
+        """
+        Propagate subtended tip number from direct children to focal node.
+
+        :param node: The focal node to propagate annotations to.
+        """
+        self.logger.debug(f"Propagating annotations for {node}")
+
+        # Node is a tip, set size to 1
         if node.is_leaf():
             node.annotations['size'] = 1
-            node.annotations['pruned'] = set()
+
+        # Node is internal, sum sizes of children
         else:
             size = 0
-            pruned = set()
             for c in node.child_nodes():
                 size += c.annotations['size'].value
-                pruned = pruned.union(c.annotations['pruned'].value)
             node.annotations['size'] = size
-            node.annotations['pruned'] = pruned
 
-    def propagate_all_annotations(self, root = None):
+    def propagate_all_annotations(self, root: Node = None) -> None:
         """
-        Propagate annotations from tips to root.
+        Propagate subtended tip number from all tips to focal node or root.
+
+        :param root: The root node to propagate annotations to.
         """
+
+        # Propagate to the root if no node is specified, otherwise propagate to the focal node
         if root is None:
             root = self.tree.seed_node
-        for node in root.postorder_iter():
-            self._propagate_annotations(node)
 
-    def _opentol_subtree(self, polytomy, ott_ids):
+        # Note that this is potentially a costly operation
+        self.logger.info(f"Propagating all annotations from tips to {root}")
+        for node in root.postorder_iter():
+            self.propagate_annotations(node)
+
+    def graft_induced_subtree(self, polytomy: Node, ott_ids: dict) -> None:
         """
         Get an induced subtree from OpenToL for a set of OTT IDs.
+
+        :param polytomy: The polytomy node to graft the subtree onto.
+        :param ott_ids: A dictionary of taxon names and their corresponding OTT IDs.
         """
-        subtree_data = self.opentol_client.get_induced_subtree(ott_ids)
+        subtree_data = self.opentol_client.get_induced_subtree(list(ott_ids.values()))
 
         # Parse the subtree topology
         newick = subtree_data['newick']
@@ -122,45 +172,48 @@ class PolytomyResolver:
 
         # Iterate over the tips of the opentol tree. Clean up labels. Match with the polytomy's children.
         matches = []
-        for leaf in opentol_tree.leaf_node_iter():
+        for opentol_leaf in opentol_tree.leaf_node_iter():
 
             # If leaf label matches '_ott' pattern, clean it up for matching
-            if '_ott' in leaf.taxon.label:
-                parts = leaf.taxon.label.split('_ott')
+            if '_ott' in opentol_leaf.taxon.label:
+                parts = opentol_leaf.taxon.label.split('_ott')
                 if len(parts) > 1 and parts[1].isdigit():
-                    ott_id = int(parts[1])
-                    leaf.annotations['ott_id'] = ott_id
-                    leaf.taxon.label = parts[0]
+                    opentol_leaf.taxon.label = parts[0]
 
                     # Name match the node's children and graft their children on the leaf
-                    for c in polytomy.child_nodes():
-                        if c.label == leaf.taxon.label:
-                            matches.append([leaf, c])
+                    for polytomy_child in polytomy.child_nodes():
+                        if polytomy_child.label == opentol_leaf.taxon.label:
+                            matches.append([opentol_leaf, polytomy_child])
                             break
 
         # Graft the matched nodes
         for match in matches:
-            leaf, node = match
-            polytomy.remove_child(node)
-            leaf.add_child(node)
+            opentol_leaf, polytomy_child = match
 
-        # Graft the opentol tree to the input node
-        for c in opentol_tree.seed_node.child_nodes():
-            polytomy.add_child(c)
+            # Remove the current child from the polytomy
+            polytomy.remove_child(polytomy_child)
 
-    # TODO: run me as a batch job
-    def _tnrs_children(self, node):
+            # Replace the matched opentol leaf by the polytomy child
+            parent = opentol_leaf.parent_node
+            parent.remove_child(opentol_leaf)
+            parent.add_child(polytomy_child)
+
+        # Here we graft the opentol root's children onto the polytomy.
+        for opentol_root_child in opentol_tree.seed_node.child_nodes():
+            polytomy.add_child(opentol_root_child)
+
+    def map_opentol_children(self, node: Node) -> dict:
         """
         Resolve taxon names to OTT IDs for all children of a node.
-        """
-        ott_ids = []
-        for c in node.child_nodes():
 
-            # If the child has an OTT ID, we don't need to resolve it
-            ott_id = c.annotations['ott_id'].value
-            if ott_id:
-                ott_ids.append(ott_id)
-                continue
+        :param node: The node to resolve children for.
+        :return: A dictionary of taxon names and their corresponding OTT IDs.
+        """
+        ott_ids = {}
+        taxon_names = []
+
+        # Aggregate the names of the direct children
+        for c in node.child_nodes():
 
             # Sometimes we arrive at a leaf, after pruning. It probably
             # still doesn't have a taxon, but we can check.
@@ -168,115 +221,47 @@ class PolytomyResolver:
                 taxon_name = c.taxon.label
             else:
                 taxon_name = c.label
+            taxon_names.append(taxon_name)
 
-            # Resolve the taxon name to an OTT ID
-            if taxon_name:
-                result = self.opentol_client.resolve_names([taxon_name])
+        # Resolve the taxon name to an OTT ID
+        # We need at least 2 names. If we have 2, we can get a split that combines them,
+        # taking them out of the pool of polytomy children.
+        if len(taxon_names) > 1:
+            result = self.opentol_client.resolve_names(taxon_names)
+            for taxon_name in taxon_names:
                 if result and taxon_name in result and result[taxon_name]:
                     ott_id = result[taxon_name]['ott_id']
-                    c.annotations['ott_id'] = ott_id
-                    ott_ids.append(ott_id)
+                    ott_ids[taxon_name] = ott_id
 
         # Return the list of OTT IDs
         return ott_ids
 
-    def weighted_prune(self, polytomy):
+    def weighted_prune(self, polytomy: Node):
         """
         Prune a polytomy node to minimize tip loss.
+
+        :param polytomy: The polytomy node to prune.
         """
 
         # We'll do a Schwartzian transform to sort the children by weight
         child_list = []
         for c in polytomy.child_nodes():
 
-            # The weight is the number of tips in the subtree minus the number of pruned tips
-            weight = int(c.annotations['size'].value) - len(c.annotations['pruned'].value)
-            child_list.append((c, weight))
+            # The weight is the number of tips in the subtree
+            size = int(c.annotations['size'].value)
+            child_list.append((c, size))
 
         # Sort children by weight in descending order
         child_list.sort(key=lambda x: x[1], reverse=True)
 
         # Keep the two largest children, so start iteration at 3rd element
-        pruned = set()
-        count = 0
-        for i, (child, weight) in enumerate(child_list[2:], start=2):
+        total_tips_pruned = 0
+        for i, (child, size) in enumerate(child_list[2:], start=2):
 
-            # Child may have already been propagated previous pruning results
-            pruned = pruned.union(child.annotations['pruned'].value)
-
-            # Child may subtend leaves whose labels we want to record
-            for leaf in child.leaf_nodes():
-
-                # If we graft an OTOL subtree and it has an MRCA node, nothing is grafted on top
-                # so it doesn't have a taxon.
-                if leaf.taxon:
-                    pruned.add(leaf.taxon.label)
-                else:
-
-                    # Seem to be mrca nodes, whose pruning we don't need to track anyway...
-                    self.logger.warning(f"Leaf node {leaf} has no taxon")
-
-            # Now we can remove the child
-            count += weight
+            # Remove any other children and add up their sizes
+            total_tips_pruned += size
             polytomy.remove_child(child)
 
-        polytomy.annotations['pruned'] = pruned
-        self.logger.info(f"Pruned {count} tips from {polytomy.label}")
-
-    def _handle_mrca_leaf(self, leaves, opentol_leaf):
-        """
-        Fetch the polyphyletic ("broken") subtree rooted at the OpenToL leaf
-        """
-
-        subtree_data = self.opentol_client.get_subtree(opentol_leaf.taxon.label)
-
-        # Parse the subtree topology
-        newick = subtree_data['newick']
-        parser = TreeParser(config={
-            'schema': {'preserve_underscores': False, 'case_sensitive_taxon_labels': True}
-        })
-        opentol_tree = parser.parse_from_string(newick)
-
-        # Clean leaf labels of opentol tree to extract OTT ID, copy it to annotation, and map nodes to dict
-        leaf_map = {}
-        for leaf in opentol_tree.leaf_node_iter():
-            if ' ott' in leaf.taxon.label:
-                parts = leaf.taxon.label.split(' ott')
-                if len(parts) > 1 and parts[1].isdigit():
-                    ott_id = int(parts[1])
-                    leaf.annotations['ott_id'] = ott_id
-                    leaf.taxon.label = parts[0]
-            leaf_map[leaf.taxon.label] = leaf
-
-        # Iterate over polytomy leaves, traverse to nearest internal node match, and graft there
-        is_mapped = {}
-        for leaf in leaves:
-
-            # Tips are process IDs so need to traverse up
-            for parent in leaf.ancestor_iter():
-                if parent.label in leaf_map:
-                    otol_node = leaf_map[parent.label]
-
-                    # Clear existing children in the first pass
-                    if parent.label not in is_mapped:
-                        otol_node.clear_child_nodes()
-                        is_mapped[parent.label] = True
-
-                    # Graft the leaf to the OpenToL node
-                    otol_node.add_child(leaf)
-
-        # Do a postorder traversal on the opentol subtree to identify unmapped tips
-        tips_to_prune = []
-        for onode in opentol_tree.postorder_node_iter():
-            if onode.is_leaf():
-                label = onode.taxon.label
-                if label not in is_mapped:
-                    tips_to_prune.append(onode)
-
-        # Prune the tips
-        for tip in tips_to_prune:
-            tip.parent_node.remove_child(tip)
-
-        # Graft the opentol tree to the input node
-        for c in opentol_tree.seed_node.child_nodes():
-            opentol_leaf.add_child(c)
+        polytomy.annotations['size'] = int(polytomy.annotations['size'].value) - total_tips_pruned
+        current_size = int(polytomy.annotations['size'].value)
+        self.logger.info(f"Pruned {total_tips_pruned} tips from {polytomy.label} (remaining: {current_size})")
