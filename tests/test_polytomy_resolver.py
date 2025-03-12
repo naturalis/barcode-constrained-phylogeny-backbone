@@ -86,8 +86,11 @@ def test_tnrs(polytomy_resolver, example_tree):
         767849, # Bruchomyiinae
     }
     root = example_tree.seed_node
+
+    # Returns a dictionary of taxon names to OTT IDs
     ott_ids = polytomy_resolver.map_opentol_children(root)
-    for ott_id in ott_ids:
+    for name in ott_ids:
+        ott_id = ott_ids[name]
         assert ott_id in known_otts
 
 def test_weighted_prune(polytomy_resolver, example_tree):
