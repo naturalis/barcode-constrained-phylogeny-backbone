@@ -8,6 +8,9 @@ information and minimal-loss pruning strategies.
 
 import re
 import logging
+
+from dendropy import Tree
+
 from polytomy.tree_parser import TreeParser
 from dendropy.datamodel.treemodel import Node
 
@@ -171,7 +174,7 @@ class PolytomyResolver:
         :param polytomy: The polytomy node to graft the subtree onto.
         :param ott_ids: A dictionary of taxon names and their corresponding OTT IDs.
         """
-        subtree_data = self.opentol_client.get_induced_subtree(list(ott_ids.values()))
+        subtree_data = self.opentol_client.get_induced_subtree(list(ott_ids))
 
         # Parse the subtree topology
         newick = subtree_data['newick']
@@ -179,6 +182,13 @@ class PolytomyResolver:
             'schema': {'preserve_underscores': True, 'case_sensitive_taxon_labels': True}
         })
         opentol_tree = parser.parse_from_string(newick)
+
+        # Make a map from polytomy child labels to their nodes. This map is used first
+        # to do a literal match of the taxon names in the OpenToL tree to the polytomy children.
+        # If a literal match is not found, we will try to match the taxon names to synonyms.
+        polytomy_children = {}
+        for c in polytomy.child_nodes():
+            polytomy_children[c.label] = c
 
         # Iterate over the tips of the opentol tree. Clean up labels. Match with the polytomy's children.
         matches = []
@@ -203,12 +213,23 @@ class PolytomyResolver:
                 parts = opentol_leaf.taxon.label.split('_ott')
                 if len(parts) > 1 and parts[1].isdigit():
                     opentol_leaf.taxon.label = parts[0]
+                    ott_id = int(parts[1])
 
-                    # Name match the node's children and graft their children on the leaf
-                    for polytomy_child in polytomy.child_nodes():
-                        if polytomy_child.label == opentol_leaf.taxon.label:
-                            matches.append([opentol_leaf, polytomy_child])
-                            break
+                    # Match the leaf literally with the polytomy children
+                    if opentol_leaf.taxon.label in polytomy_children:
+                        polytomy_child = polytomy_children[opentol_leaf.taxon.label]
+                        matches.append([opentol_leaf, polytomy_child])
+
+                    # No direct match, maybe a synonym?
+                    else:
+
+                        # Iterate over the known synonyms and try to match any of these the polytomy children
+                        if ott_id in ott_ids and len(ott_ids[ott_id]['synonyms']) > 0:
+                            for synonym in ott_ids[ott_id]['synonyms']:
+                                if synonym in polytomy_children:
+                                    polytomy_child = polytomy_children[synonym]
+                                    matches.append([opentol_leaf, polytomy_child])
+                                    self.logger.info(f"Matched synonym {synonym} to {polytomy_child.label}")
 
         # Iterate over the matches and replace the polytomy children with the opentol leaves
         for match in matches:
@@ -263,24 +284,16 @@ class PolytomyResolver:
         if len(taxon_names) > 1:
             result = self.opentol_client.resolve_names(taxon_names)
 
-            # Iterate over the taxon names and get the OTT ID
-            for taxon_name in taxon_names:
-                if result and taxon_name in result and result[taxon_name]:
-
-                    # TODO: Check if the result is a synonym
-                    # i.e. if result[taxon_name]['is_synonym']:
-                    if result[taxon_name]['is_synonym']:
-                        self.logger.info(f"Taxon {taxon_name} is a synonym")
-                    ott_id = result[taxon_name]['ott_id']
-                    ott_ids[taxon_name] = ott_id
-
-            # Also iterate over the result to get the OTT ID
-            for taxon_name in result:
-                if result[taxon_name]:
-                    if result[taxon_name]['is_synonym']:
-                        self.logger.info(f"Taxon {taxon_name} is a synonym")
-                    ott_id = result[taxon_name]['ott_id']
-                    ott_ids[taxon_name] = ott_id
+            # Iterate over the result set, record OTT IDs and synonyms
+            for match in result:
+                if result[match] is None:
+                    continue
+                ott_id = result[match].get('ott_id')
+                synonyms = result[match].get('synonyms', [])
+                ott_ids[ott_id] = {
+                    'name': match,
+                    'synonyms': synonyms
+                }
 
         # Return the list of OTT IDs
         return ott_ids
