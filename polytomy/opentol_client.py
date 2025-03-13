@@ -413,8 +413,11 @@ class OpenToLClient:
                                         'matched_name': match.get('matched_name', ''),
                                         'score': match_score,
                                         'is_synonym': match.get('is_synonym', False),
-                                        'rank': taxon_info.get('rank', '')
+                                        'rank': taxon_info.get('rank', ''),
+                                        'synonyms': taxon_info.get('synonyms', [])
                                     }
+                                    if match_data['is_synonym']:
+                                        self.logger.debug(f"Synonym match: {name} -> {match_data['synonyms']}")
                                     name_to_matches[name].append(match_data)
 
                     # Select best match for each name and cache
