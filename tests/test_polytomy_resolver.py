@@ -89,8 +89,7 @@ def test_tnrs(polytomy_resolver, example_tree):
 
     # Returns a dictionary of taxon names to OTT IDs
     ott_ids = polytomy_resolver.map_opentol_children(root)
-    for name in ott_ids:
-        ott_id = ott_ids[name]
+    for ott_id in ott_ids:
         assert ott_id in known_otts
 
 def test_weighted_prune(polytomy_resolver, example_tree):
