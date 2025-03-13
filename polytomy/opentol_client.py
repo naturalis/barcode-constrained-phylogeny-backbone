@@ -419,6 +419,8 @@ class OpenToLClient:
                                     if match_data['is_synonym']:
                                         self.logger.debug(f"Synonym match: {name} -> {match_data['synonyms']}")
                                     name_to_matches[name].append(match_data)
+                                    if name != match_data['matched_name']:
+                                        self.logger.debug(f"Matched name differs: {name} -> {match_data['matched_name']}")
 
                     # Select best match for each name and cache
                     for name in names_to_resolve:
