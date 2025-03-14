@@ -36,7 +36,7 @@ class SequencePlacer:
 
         # Configure placement parameters
         self.threads = self.config.get('threads', 6)
-        self.model = self.config.get('model', "GTRGAMMA")
+        self.model = self.config.get('model', "GTRCAT")
         self.prefix = self.config.get('prefix', "seq_placement")
         self.keep_files = self.config.get('keep_files', False)
         self.output_dir = self.config.get('output_dir', '.')
