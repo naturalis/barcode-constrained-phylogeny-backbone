@@ -14,6 +14,9 @@ import tempfile
 import subprocess
 import shutil
 from pathlib import Path
+from dendropy import Tree
+from Bio import SeqIO
+from polytomy.tree_parser import TreeParser
 
 
 class SequencePlacer:
@@ -43,28 +46,55 @@ class SequencePlacer:
 
         self.logger.info("Sequence placer initialized")
 
-    def place_sequences(self, alignment):
+    def _filter_tree(self, alignment_path) -> Tree:
+        """
+        Filter the backbone tree to only include tips present in the alignment.
+
+        Args:
+            alignment_path (str): Path to reference alignment.
+
+        Returns:
+            dendropy.Tree: The filtered tree.
+        """
+        self.logger.info("Filtering tree to include only sequences in alignment")
+
+        # Load alignment
+        alignment = SeqIO.to_dict(SeqIO.parse(alignment_path, "fasta"))
+
+        # Filter tree tips
+        filtered_tree = self.backbone_tree.extract_tree_with_taxa_labels(
+            [leaf.taxon.label for leaf in self.backbone_tree.leaf_node_iter() if leaf.taxon.label in alignment]
+        )
+
+        self.logger.info("Tree filtering completed")
+        return filtered_tree
+
+    def place_sequences(self, alignment: str, prefilter: bool = False) -> Tree:
         """
         Place sequences onto the backbone.
 
-        Args:
-            alignment (str): Path to reference alignment.
-
-        Returns:
-            dendropy.Tree: The tree with placed sequences.
+        :param alignment: Path to reference alignment.
+        :param prefilter: Whether to prefilter the tree by removing all tips not in the alignment.
+        :return: dendropy.Tree: The tree with placed sequences.
         """
 
         self.logger.info(f"Placing sequences from {alignment} onto backbone tree")
 
         # Create temporary directory
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Write backbone tree to temporary file
-            backbone_path = os.path.join(temp_dir, "backbone.tree")
-            self.backbone_tree.write(path=backbone_path, schema="newick")
+        with (tempfile.TemporaryDirectory() as temp_dir):
 
             if not alignment or not os.path.exists(alignment):
                 self.logger.error("Failed to create or find reference alignment")
                 return None
+
+            tree = self.backbone_tree
+            if prefilter:
+                # Filter alignment to only include sequences in the tree
+                tree = self._filter_tree(alignment)
+
+            # Write backbone tree to temporary file
+            backbone_path = os.path.join(temp_dir, "backbone.tree")
+            tree.write(path=backbone_path, schema="newick")
 
             # Run sequence placement
             placement_results = self._run_epa_placement(
@@ -84,8 +114,10 @@ class SequencePlacer:
                 return None
 
             # Read the tree with placed sequences
-            import dendropy
-            result_tree = dendropy.Tree.get(path=result_tree_path, schema="newick", preserve_underscores=True)
+            parser = TreeParser(config={
+                'schema': {'preserve_underscores': True, 'case_sensitive_taxon_labels': True}
+            })
+            result_tree = parser.parse_from_file(result_tree_path)
 
             # Copy output files if keep_files is True
             if self.keep_files:

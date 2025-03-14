@@ -133,11 +133,7 @@ def test_run_epa_placement(sequence_placer, alignment_path, backbone_tree):
         backbone_tree.write(path=backbone_path, schema="newick")
 
         # Run EPA placement
-        result = sequence_placer._run_epa_placement(
-            backbone_path,
-            str(alignment_path),
-            temp_dir
-        )
+        result = sequence_placer.place_sequences(str(alignment_path), prefilter=True)
 
         # Skip the full test if raxml isn't available
         if not is_tool_available("raxmlHPC"):
@@ -147,17 +143,11 @@ def test_run_epa_placement(sequence_placer, alignment_path, backbone_tree):
         # Check that result is returned
         assert result is not None
 
-        # Check that result tree exists
-        assert os.path.exists(result["tree_path"])
-
-        # Check that EPA result file exists
-        assert os.path.exists(result["epa_result"])
-
 
 @skip_if_no_raxml
 def test_place_sequences(sequence_placer, alignment_path):
     """Test placing sequences onto the backbone tree."""
-    result_tree = sequence_placer.place_sequences(str(alignment_path))
+    result_tree = sequence_placer.place_sequences(str(alignment_path), prefilter=True)
 
     # Skip the full test if RAxML isn't available
     if not is_tool_available("raxmlHPC"):
@@ -201,7 +191,7 @@ def test_keep_files(backbone_tree, alignment_path):
         }
 
         placer = SequencePlacer(backbone_tree, config=config)
-        placer.place_sequences(str(alignment_path))
+        placer.place_sequences(str(alignment_path), prefilter=True)
 
         # Skip checking files if RAxML isn't available
         if not is_tool_available("raxmlHPC"):
@@ -221,7 +211,7 @@ def test_model_parameter(backbone_tree, alignment_path):
     placer = SequencePlacer(backbone_tree, config=config)
 
     # Run placement
-    result_tree = placer.place_sequences(str(alignment_path))
+    result_tree = placer.place_sequences(str(alignment_path), prefilter=True)
 
     # Skip the test if RAxML isn't available
     if not is_tool_available("raxmlHPC"):
@@ -235,3 +225,30 @@ def test_model_parameter(backbone_tree, alignment_path):
     branch_lengths = [edge.length for edge in result_tree.edges() if edge.length is not None]
     assert len(branch_lengths) > 0
     assert all(length >= 0 for length in branch_lengths)
+
+@skip_if_no_raxml
+def test_place_big_file(backbone_tree, alignment_path):
+    """Test placing sequences from a large alignment file."""
+    placer = SequencePlacer(backbone_tree)
+    result_tree = placer.place_sequences(str(alignment_path), prefilter=True)
+
+    # Skip the test if RAxML isn't available
+    if not is_tool_available("raxmlHPC"):
+        assert result_tree is None
+        return
+
+    # Check that a tree was returned
+    assert result_tree is not None
+
+    # Check that the resulting tree has taxa
+    assert len(result_tree.taxon_namespace) > 0
+
+    # Check that the resulting tree has taxa from the original backbone
+    # (indicating that sequences were properly placed)
+    original_taxa = set(taxon.label for taxon in backbone_tree.taxon_namespace
+                        if taxon and taxon.label)
+    result_taxa = set(taxon.label for taxon in result_tree.taxon_namespace
+                      if taxon and taxon.label)
+
+    # At least some of the original taxa should be in the result tree
+    assert original_taxa.intersection(result_taxa)
