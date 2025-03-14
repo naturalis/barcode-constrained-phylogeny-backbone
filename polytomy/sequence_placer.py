@@ -6,6 +6,7 @@ This module handles placement of pruned tips and additional sequences
 onto a backbone tree using EPA (Evolutionary Placement Algorithm).
 """
 
+import numpy as np
 import os
 import sys
 import time
@@ -15,7 +16,7 @@ import subprocess
 import shutil
 from pathlib import Path
 from dendropy import Tree
-from Bio import SeqIO
+from Bio import SeqIO, AlignIO
 from polytomy.tree_parser import TreeParser
 
 
@@ -46,6 +47,62 @@ class SequencePlacer:
 
         self.logger.info("Sequence placer initialized")
 
+    def _compress_alignment(self, alignment_path: str, suffix: str, retain: int = 700) -> str:
+        """
+        Compresses an alignment by computing the coverage of each column and retaining
+        the columns with the highest coverage using NumPy for vectorization.
+
+        :param alignment_path: Path to the alignment file.
+        :param suffix: Suffix to add to the output file name.
+        :param retain: Number of columns to retain.
+        :return: Path to the compressed alignment file.
+        """
+        # Read the alignment with BioPython
+        alignment = AlignIO.read(alignment_path, "fasta")
+
+        # Get alignment dimensions
+        num_seqs = len(alignment)
+        num_cols = alignment.get_alignment_length()
+
+        # Throw error if retain is greater than the length of the alignment
+        if retain > num_cols:
+            raise ValueError(f"Cannot retain {retain} columns given alignment length ({num_cols})")
+
+        # Convert alignment to numpy array for vectorized operations
+        # First create a 2D character array
+        alignment_array = np.array([list(str(seq.seq)) for seq in alignment])
+
+        # Calculate coverage: count non-gap characters in each column
+        # This is much faster than iterating through each column
+        coverage = np.sum(alignment_array != '-', axis=0)
+
+        # Get indices of columns sorted by coverage (descending)
+        sorted_indices = np.argsort(-coverage)
+
+        # Select the top 'retain' indices
+        top_indices = sorted_indices[:retain]
+
+        # Sort these indices to maintain original column order
+        top_indices.sort()
+
+        # Create output path
+        compressed_path = f"{alignment_path}.{suffix}"
+
+        # Extract and write the selected columns
+        self.logger.info(f"Writing alignment retaining {retain} columns with highest coverage to {compressed_path}")
+        with open(compressed_path, "w") as compressed:
+            for i, seq in enumerate(alignment):
+                # Write FASTA header
+                compressed.write(f">{seq.id}\n")
+
+                # Extract selected columns for this sequence and join them
+                selected_columns = alignment_array[i, top_indices]
+                compressed.write("".join(selected_columns) + "\n")
+
+        return compressed_path
+
+
+
     def _filter_tree(self, alignment_path) -> Tree:
         """
         Filter the backbone tree to only include tips present in the alignment.
@@ -69,12 +126,13 @@ class SequencePlacer:
         self.logger.info("Tree filtering completed")
         return filtered_tree
 
-    def place_sequences(self, alignment: str, prefilter: bool = False) -> Tree:
+    def place_sequences(self, alignment: str, prefilter: bool = False, compress: bool = True) -> Tree:
         """
         Place sequences onto the backbone.
 
         :param alignment: Path to reference alignment.
         :param prefilter: Whether to prefilter the tree by removing all tips not in the alignment.
+        :param compress: Whether to compress the alignment before placing sequences.
         :return: dendropy.Tree: The tree with placed sequences.
         """
 
@@ -86,6 +144,10 @@ class SequencePlacer:
             if not alignment or not os.path.exists(alignment):
                 self.logger.error("Failed to create or find reference alignment")
                 return None
+
+            # Compress the alignment
+            if compress:
+                alignment = self._compress_alignment(alignment, "compressed")
 
             tree = self.backbone_tree
             if prefilter:
