@@ -23,4 +23,4 @@ placer = SequencePlacer(backbone_tree, config={
     'keep_files': args.keep_files,
     'output_dir': args.dir
 })
-result_tree = placer.place_sequences(args.alignment, prefilter=True)
+result_tree = placer.place_sequences(args.alignment, prefilter=True, compress=True)
