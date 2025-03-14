@@ -78,7 +78,7 @@ def custom_sequence_placer(backbone_tree):
     """Create a SequencePlacer instance with custom settings."""
     config = {
         'threads': 2,
-        'model': "GTR+G+I",
+        'model': "GTRGAMMA",
         'prefix': "test_placement",
         'keep_files': True
     }
@@ -91,7 +91,7 @@ def test_initialization(backbone_tree):
     # Default settings
     placer = SequencePlacer(backbone_tree)
     assert placer.threads == 1
-    assert placer.model == "GTRGAMMA"
+    assert placer.model == "GTRCAT"
     assert placer.prefix == "seq_placement"
     assert placer.keep_files is False
     assert placer.output_dir == '.'
