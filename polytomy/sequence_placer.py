@@ -148,9 +148,6 @@ class SequencePlacer:
         """
         self.logger.info("Running EPA sequence placement with RAxML")
 
-        # RAxML classic is preferred for EPA, as RAxML-NG's EPA implementation
-        # might work differently or have different parameter names
-
         # Build command
         cmd = [
             "raxmlHPC-PTHREADS",
