@@ -15,6 +15,7 @@ import subprocess
 import shutil
 from pathlib import Path
 from dendropy import Tree
+from Bio import SeqIO
 
 
 class BranchLengthOptimizer:
@@ -47,6 +48,37 @@ class BranchLengthOptimizer:
 
         self.logger.info(f"Branch length optimizer initialized with tool={self.tool}, model={self.model}")
 
+    def _check_tree_alignment_congruence(self, alignment_path: str, workdir: str) -> [str,str]:
+        """
+        Make the tree and the alignment congruent by removing tips from the tree that are not in the alignment
+        and removing sequences from the alignment that are not in the tree.
+
+        :param alignment_path: Path to alignment file.
+        :return: A tuple with the filtered tree and alignment paths.
+        """
+
+        # Get tip labels from the tree
+        tree_tips = set([tip.taxon.label for tip in self.tree.leaf_node_iter()])
+
+        # Load alignment
+        alignment = SeqIO.to_dict(SeqIO.parse(alignment_path, "fasta"))
+
+        # Write the alignment to workdir as fasta with only the sequences present in the tree
+        congruent_alignment_path = os.path.join(workdir, "congruent_alignment.fasta")
+        seqs = set()
+        with open(congruent_alignment_path, "w") as out:
+            for seq in alignment.values():
+                if seq.id in tree_tips:
+                    SeqIO.write(seq, out, "fasta")
+                    seqs.add(seq.id)
+
+        # Write the tree to workdir with only the tips present in the alignment
+        congruent_tree_path = os.path.join(workdir, "congruent_tree.nwk")
+        congruent_tree = self.tree.extract_tree_with_taxa_labels(seqs)
+        congruent_tree.write(path=congruent_tree_path, schema="newick")
+
+        return congruent_tree_path, congruent_alignment_path
+
     def optimize_branch_lengths(self, alignment_path: str=None) -> Tree:
         """
         Compute optimal branch lengths for the tree.
@@ -69,9 +101,9 @@ class BranchLengthOptimizer:
 
         # Create temporary directory
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Write tree to temporary file
-            tree_path = os.path.join(temp_dir, "input.tree")
-            self.tree.write(path=tree_path, schema="newick")
+
+            # Make the tree and the alignment congruent
+            tree_path, alignment = self._check_tree_alignment_congruence(alignment, temp_dir)
 
             # Run the selected tool
             if self.tool == "iqtree":
