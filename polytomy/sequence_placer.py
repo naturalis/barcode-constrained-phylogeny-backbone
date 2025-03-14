@@ -35,7 +35,7 @@ class SequencePlacer:
         self.logger = logging.getLogger(__name__)
 
         # Configure placement parameters
-        self.threads = self.config.get('threads', 1)
+        self.threads = self.config.get('threads', 6)
         self.model = self.config.get('model', "GTRGAMMA")
         self.prefix = self.config.get('prefix', "seq_placement")
         self.keep_files = self.config.get('keep_files', False)
@@ -89,7 +89,7 @@ class SequencePlacer:
 
             tree = self.backbone_tree
             if prefilter:
-                # Filter alignment to only include sequences in the tree
+                # Filter the backbone tree to only include tips present in the alignment.
                 tree = self._filter_tree(alignment)
 
             # Write backbone tree to temporary file
@@ -153,7 +153,7 @@ class SequencePlacer:
 
         # Build command
         cmd = [
-            "raxmlHPC",
+            "raxmlHPC-PTHREADS",
             "-f", "v",  # EPA placement algorithm
             "-t", backbone_path,  # Reference tree
             "-s", alignment_path,  # Alignment with query sequences
