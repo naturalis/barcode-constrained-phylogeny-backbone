@@ -190,6 +190,7 @@ class PolytomyResolver:
         for c in polytomy.child_nodes():
             polytomy_children[c.label] = c
 
+        # TODO: factor me out as a general 'map_equivalent' method, both for induced subtrees and total subtrees
         # Iterate over the tips of the opentol tree. Clean up labels. Match with the polytomy's children.
         matches = []
         for opentol_leaf in opentol_tree.leaf_node_iter():
@@ -231,6 +232,7 @@ class PolytomyResolver:
                                     matches.append([opentol_leaf, polytomy_child])
                                     self.logger.info(f"Matched synonym {synonym} to {polytomy_child.label}")
 
+        # TODO: factor me out as a general 'insert_topology' method, both for induced and total subtrees
         # Iterate over the matches and replace the polytomy children with the opentol leaves
         for match in matches:
             opentol_leaf, polytomy_child = match
