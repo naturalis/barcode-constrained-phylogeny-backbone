@@ -14,19 +14,19 @@ import tempfile
 import subprocess
 import shutil
 from pathlib import Path
+from dendropy import Tree
 
 
 class BranchLengthOptimizer:
     """Computes and optimizes branch lengths on resolved trees."""
 
-    def __init__(self, tree, tool="iqtree", config=None):
+    def __init__(self, tree: Tree, tool: str="iqtree", config: dict=None):
         """
         Initialize with a tree and tool selection.
 
-        Args:
-            tree (dendropy.Tree): The tree to optimize branch lengths for.
-            tool (str, optional): Tool to use for optimization ("iqtree" or "raxml-ng").
-            config (dict, optional): Configuration options for the optimization.
+        :param tree: The tree to optimize branch lengths for.
+        :param tool: Tool to use for optimization ("iqtree" or "raxml-ng").
+        :param config: Configuration options for the optimization.
         """
         self.tree = tree
         self.tool = tool.lower()
@@ -47,16 +47,12 @@ class BranchLengthOptimizer:
 
         self.logger.info(f"Branch length optimizer initialized with tool={self.tool}, model={self.model}")
 
-    def optimize_branch_lengths(self, alignment_path=None):
+    def optimize_branch_lengths(self, alignment_path: str=None) -> Tree:
         """
         Compute optimal branch lengths for the tree.
 
-        Args:
-            alignment_path (str, optional): Path to alignment file.
-                                          Required if not already set in config.
-
-        Returns:
-            dendropy.Tree: The tree with optimized branch lengths.
+        :param alignment_path: Path to alignment file. Required if not already set in config.
+        :return: The tree with optimized branch lengths.
         """
         # Check if alignment is provided
         alignment = alignment_path or self.config.get('alignment')
@@ -108,17 +104,14 @@ class BranchLengthOptimizer:
             return optimized_tree
 
     # Fix for BranchLengthOptimizer.run_iqtree method
-    def run_iqtree(self, alignment_path, tree_path, working_dir):
+    def run_iqtree(self, alignment_path: str, tree_path: str, working_dir: str) -> str:
         """
         Run IQTree for branch length optimization.
 
-        Args:
-            alignment_path (str): Path to alignment file.
-            tree_path (str): Path to input tree file.
-            working_dir (str): Directory for temporary files.
-
-        Returns:
-            str: Path to the optimized tree file, or None if failed.
+        :param alignment_path: Path to alignment file.
+        :param tree_path: Path to input tree file.
+        :param working_dir: Directory for temporary files.
+        :return: Path to the optimized tree file, or None if failed.
         """
         self.logger.info("Running IQTree for branch length optimization")
 
@@ -168,17 +161,14 @@ class BranchLengthOptimizer:
             self.logger.error(f"Error running IQTree: {str(e)}")
             return None
 
-    def run_raxml(self, alignment_path, tree_path, working_dir):
+    def run_raxml(self, alignment_path: str, tree_path: str, working_dir: str) -> str:
         """
         Run RAxML-NG for branch length optimization.
 
-        Args:
-            alignment_path (str): Path to alignment file.
-            tree_path (str): Path to input tree file.
-            working_dir (str): Directory for temporary files.
-
-        Returns:
-            str: Path to the optimized tree file, or None if failed.
+        :param alignment_path: Path to alignment file.
+        :param tree_path: Path to input tree file.
+        :param working_dir: Directory for temporary files.
+        :return: Path to the optimized tree file, or None if failed.
         """
         self.logger.info("Running RAxML-NG for branch length optimization")
 
@@ -255,15 +245,12 @@ class BranchLengthOptimizer:
             self.logger.error(f"Error running RAxML-NG: {str(e)}")
             return None
 
-    def _is_program_available(self, program):
+    def _is_program_available(self, program: str) -> bool:
         """
         Check if a program is available in PATH.
 
-        Args:
-            program (str): Program name to check.
-
-        Returns:
-            bool: True if program is available, False otherwise.
+        :param program: Program name to check.
+        :return: True if program is available, False otherwise.
         """
         try:
             subprocess.run(
