@@ -1,3 +1,5 @@
+import logging
+
 from polytomy.sequence_placer import SequencePlacer
 from polytomy.tree_parser import TreeParser
 import argparse
@@ -23,4 +25,7 @@ placer = SequencePlacer(backbone_tree, config={
     'keep_files': args.keep_files,
     'output_dir': args.dir
 })
+log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
+placer.logger = log
 result_tree = placer.place_sequences(args.alignment, prefilter=True, compress=True)
