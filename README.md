@@ -39,28 +39,12 @@ cd barcode-constrained-phylogeny-backbone
 conda env create -f environment.yml
 ```
 
-<!--
-
-Top-level driver script not tested yet!!!
-
 ## Usage
 
 Basic usage:
 
 ```bash
 python resolve_polytomies.py --input tree.newick --output resolved_tree.newick
-```
-
-Advanced usage:
-
-```bash
-python resolve_polytomies.py \
-  --input tree.newick \
-  --output resolved_tree.newick \
-  --optimization-tool iqtree \
-  --sequences additional_seqs.fasta \
-  --alignment alignment.fasta \
-  --log-level INFO
 ```
 
 Complete Exemplar Pair usage:
@@ -83,25 +67,6 @@ python resolve_polytomies.py \
   --keep-files
 ```
 
-Use Pre-Optimized Trees and place the first set of Exemplar Pair:
-
-```bash
-python resolve_polytomies.py \
-  --input optimized_tree.newick \
-  --output tree_with_exemplars.newick \
-  --sequences additional_seqs.fasta \
-  --alignment alignment.fasta \
-  --exemplar-pairs exemplar_pairs.txt \
-  --place-first-exemplars \
-  --compress-alignment \
-  --threads 24 \
-  --skip-opentol \
-  --model "GTR+G" \
-  --log-level INFO \
-  --log-file run_log.txt
-```
-
--->
 
 # Key Command Line Arguments
 
