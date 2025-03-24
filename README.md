@@ -10,7 +10,7 @@ This tool processes phylogenetic trees with polytomies (multifurcating nodes) an
 2. Minimal-loss pruning for nodes that cannot be resolved through OpenToL
 3. Branch length optimization using IQTree or RAxML-NG
 4. Sequence placement with EPA-RAxML
-5. Smart exemplar pair placement strategy
+5. Exemplar pair placement strategy
 
 Designed specifically for handling large phylogenies (~50,000 tips) efficiently.
 
@@ -103,37 +103,37 @@ python resolve_polytomies.py \
 
 -->
 
-## Key Command Line Arguments
+# Key Command Line Arguments
 
-# Input/Output
---input: Input tree file in Newick format
---output: Output resolved tree file
---alignment: Alignment file for branch length optimization
---sequences: FASTA file with sequences to place onto the backbone
---exemplar-pairs: Path to file with exemplar pair information (format: taxon<tab>exemplar1<tab>exemplar2)
-
-# Workflow Options
---skip-opentol: Skip OpenToL resolution for trees that are already resolved
---filter-exemplars: Filter tree to keep at most one exemplar per pair before optimization
---place-first-exemplars: Place only the first exemplar for each missing taxon
---graft-second-exemplars: Graft the second exemplar of each pair next to the first one
-
-# Optimization Options
---optimization-tool: Tool to use (iqtree, raxml-ng)
---model: Sequence evolution model ("GTR+G" for IQTree, "GTRCAT" for RAxML)
---threads: Number of threads for parallel processing
---max-memory: Maximum memory usage in MB
-
-# Performance Options
---compress-alignment: Compress alignment to most informative columns
---compress-columns: Number of columns to keep when compressing (default: 700)
-
-# Utility Options
---log-level: Set logging level (debug, info, warning, error, critical)
---log-file: Path to output log file
---keep-files: Keep temporary files generated during sequence placement
-
-
+- Input/Output  
+--input: Input tree file in Newick format  
+--output: Output resolved tree file  
+--alignment: Alignment file for branch length optimization  
+--sequences: FASTA file with sequences to place onto the backbone  
+--exemplar-pairs: Path to file with exemplar pair information (format: taxon<tab>exemplar1<tab>exemplar2)  
+  
+- Workflow Options  
+--skip-opentol: Skip OpenToL resolution for trees that are already resolved  
+--filter-exemplars: Filter tree to keep at most one exemplar per pair before optimization  
+--place-first-exemplars: Place only the first exemplar for each missing taxon   
+--graft-second-exemplars: Graft the second exemplar of each pair next to the first one  
+  
+- Optimization Options  
+--optimization-tool: Tool to use (iqtree, raxml-ng)  
+--model: Sequence evolution model ("GTR+G" for IQTree, "GTRCAT" for RAxML)  
+--threads: Number of threads for parallel processing  
+--max-memory: Maximum memory usage in MB  
+  
+- Performance Options  
+--compress-alignment: Compress alignment to most informative columns  
+--compress-columns: Number of columns to keep when compressing (default: 700)  
+  
+- Utility Options  
+--log-level: Set logging level (debug, info, warning, error, critical)  
+--log-file: Path to output log file  
+--keep-files: Keep temporary files generated during sequence placement  
+  
+  
 ## Dependencies
 
 - Python 3.8+
