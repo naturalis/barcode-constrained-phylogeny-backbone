@@ -68,19 +68,19 @@ Complete Exemplar Pair usage:
 ```bash
 python resolve_polytomies.py \
   --input tree.newick \
-  --output resolved_tree.newick \
-  --optimization-tool iqtree \
-  --sequences additional_seqs.fasta \
-  --alignment alignment.fasta \
-  --exemplar-pairs exemplar_pairs.txt \
-  --filter-exemplars \
+  --output final_tree_optimized.tre \
+  --alignment alignment.fa \
+  --sequences alignment.fa \
+  --exemplar-pairs exemplars_table.txt \
   --place-first-exemplars \
   --graft-second-exemplars \
-  --compress-alignment \
-  --threads 24 \
+  --optimization-tool raxml-ng \
   --model "GTR+G" \
-  --log-level INFO \
-  --log-file run_log.txt
+  --threads 52 \
+  --compress-alignment \
+  --compress-columns 700 \
+  --log-file full_pipeline.log \
+  --keep-files
 ```
 
 Use Pre-Optimized Trees and place the first set of Exemplar Pair:
