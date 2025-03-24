@@ -133,7 +133,7 @@ def parse_args():
     parser.add_argument(
         "--model",
         default="GTRCAT",
-        help="Sequence evolution model for RAxML"
+        help="Substitution model (e.g., 'GTR+G' for IQTree/RAxML-NG, 'GTRGAMMA' for standard RAxML EPA)"
     )
 
     parser.add_argument(
@@ -181,6 +181,12 @@ def parse_args():
         "--keep-files",
         action="store_true",
         help="Keep temporary files generated during sequence placement"
+    )
+
+    parser.add_argument(
+        '--skip-optimization', 
+        action='store_true',
+        help='Skip all branch length optimization steps'
     )
 
     return parser.parse_args()
@@ -266,7 +272,7 @@ def main():
             pipeline.filter_exemplar_pairs(args.exemplar_pairs)
 
         # Optimize branch lengths if alignment provided and tree is not already optimized
-        if args.alignment and not "optimized" in args.input:
+        if args.alignment and not args.skip_optimization:
             logger.info(f"Optimizing branch lengths using {args.optimization_tool}")
             pipeline.optimize_tree(args.alignment)
         else:
@@ -285,19 +291,23 @@ def main():
                 pipeline.place_additional_sequences(args.sequences)
 
         # Re-optimize branch lengths after placing first exemplars
-        if args.exemplar_pairs and args.place_first_exemplars and args.alignment:
+        if args.exemplar_pairs and args.place_first_exemplars and not args.skip_optimization:
             logger.info("Re-optimizing branch lengths after placing first exemplars")
-            pipeline.optimize_tree(args.alignment)
+            pipeline.optimize_tree_after_placement()  # Use placement alignment automatically
+        else:
+            logger.info("Skipping branch length optimization after placement")
 
         # Graft second exemplars if provided
         if args.exemplar_pairs and args.graft_second_exemplars:
             logger.info(f"Grafting second exemplars from {args.exemplar_pairs}")
-            pipeline.graft_second_exemplars(args.alignment, args.exemplar_pairs)
+            pipeline.graft_second_exemplars(args.sequences, args.exemplar_pairs)
 
         # Re-optimize branch lengths after grafting second exemplars
-        if args.exemplar_pairs and args.graft_second_exemplars and args.alignment:
+        if args.exemplar_pairs and args.graft_second_exemplars and not args.skip_optimization:
             logger.info("Re-optimizing branch lengths after grafting")
-            pipeline.reoptimize_tree_after_grafting(args.alignment)
+            pipeline.optimize_tree_after_placement()  # Use grafting alignment automatically
+        else:
+            logger.info("Skipping branch length optimization after grafting")
 
         # Write output tree
         logger.info(f"Writing resolved tree to {args.output}")
@@ -313,7 +323,6 @@ def main():
         return 1
 
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

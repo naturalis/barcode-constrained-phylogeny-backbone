@@ -9,9 +9,7 @@ from tree parsing to polytomy resolution, branch length optimization, and sequen
 import os
 import logging
 import time
-from pathlib import Path
-
-# Import pipeline components
+import dendropy
 from polytomy.tree_parser import TreeParser
 from polytomy.opentol_client import OpenToLClient
 from polytomy.polytomy_resolver import PolytomyResolver
@@ -83,8 +81,6 @@ class PolytomyResolutionPipeline:
                 # Assume it's a Newick string
                 self.tree = self.parser.parse_from_string(tree_source)
 
-            # Make a deep copy of the original tree for reference
-            import dendropy
             self.original_tree = dendropy.Tree(self.tree)
 
             # Record tree size
@@ -152,8 +148,9 @@ class PolytomyResolutionPipeline:
         if filtered_tree and filtered_alignment:
             self.logger.info(f"Successfully matched tree and alignment")
             
-            # Load the filtered tree
+            # Ensure newly placed exemplars are retained in the tree
             self.tree = self.parser.parse_from_file(filtered_tree)
+            self.tree.retain_taxa_with_labels([leaf.taxon.label for leaf in self.final_tree.leaf_node_iter()])
             
             return filtered_tree, filtered_alignment
         else:
@@ -197,16 +194,25 @@ class PolytomyResolutionPipeline:
 
         Args:
             alignment (str, optional): Path to alignment file for branch length optimization.
-                                     If not specified, uses alignment from config.
+                                    If not specified, uses alignment from config.
 
         Returns:
             bool: True if tree was optimized successfully, False otherwise.
         """
-        if not self.resolved_tree:
-            self.logger.error("No resolved tree available. Call resolve_polytomies() first.")
+        # Find the most advanced tree to optimize
+        tree_to_optimize = None
+        if hasattr(self, 'final_tree') and self.final_tree:
+            tree_to_optimize = self.final_tree
+            self.logger.info(f"Optimizing final tree with {len(tree_to_optimize.leaf_nodes())} tips")
+        elif hasattr(self, 'optimized_tree') and self.optimized_tree:
+            tree_to_optimize = self.optimized_tree
+            self.logger.info(f"Optimizing optimized tree with {len(tree_to_optimize.leaf_nodes())} tips") 
+        elif hasattr(self, 'resolved_tree'):
+            tree_to_optimize = self.resolved_tree
+            self.logger.info(f"Optimizing resolved tree with {len(tree_to_optimize.leaf_nodes())} tips")
+        else:
+            self.logger.error("No tree available to optimize")
             return False
-
-        self.logger.info("Starting tree optimization")
 
         # Configure the branch length optimizer
         optimizer_config = self.config.get('optimizer', {})
@@ -216,12 +222,12 @@ class PolytomyResolutionPipeline:
         # Check if alignment is available
         if 'alignment' not in optimizer_config:
             self.logger.warning("No alignment provided for branch length optimization")
-            self.optimized_tree = self.resolved_tree
+            self.optimized_tree = tree_to_optimize
             return True
-
+            
         # Run branch length optimization
         optimizer = BranchLengthOptimizer(
-            self.resolved_tree,
+            tree_to_optimize,
             tool=optimizer_config.get('tool', 'iqtree'),
             config=optimizer_config
         )
@@ -230,9 +236,13 @@ class PolytomyResolutionPipeline:
 
         if not self.optimized_tree:
             self.logger.error("Branch length optimization failed")
-            # Fall back to resolved tree without optimized branch lengths
-            self.optimized_tree = self.resolved_tree
+            # Fall back to original tree without optimization
+            self.optimized_tree = tree_to_optimize
             return False
+            
+        # If we were optimizing the final tree, update it with the optimized version
+        if hasattr(self, 'final_tree') and self.final_tree is tree_to_optimize:
+            self.final_tree = self.optimized_tree
 
         self.logger.info("Tree optimization completed successfully")
         return True
@@ -241,14 +251,11 @@ class PolytomyResolutionPipeline:
         """
         Place additional sequences onto the optimized tree.
         
-        If a pairs file is provided, only the first exemplar from each pair
-        that isn't already represented in the tree will be placed.
-        
         Args:
             sequences (str): Path to FASTA file with sequences to place.
-            pairs_file (str, optional): Path to file with exemplar pair information.
-                Format: taxon_name<tab>exemplar1<tab>exemplar2
-                
+            pairs_file (str, optional): Path to exemplar pairs file in format:
+                    Format: taxon_name<tab>exemplar1<tab>exemplar2
+                    
         Returns:
             bool: True if sequences were placed successfully, False otherwise.
         """
@@ -270,6 +277,9 @@ class PolytomyResolutionPipeline:
         if pairs_file:
             self.logger.info(f"Placing first exemplars from pairs in {pairs_file}")
             self.final_tree = placer.place_first_exemplars(sequences, pairs_file)
+            
+            # Store the alignment created for placement - this includes the first exemplars
+            self.placement_alignment = placer.last_placement_alignment
         else:
             # Standard placement behavior (no pairs file)
             self.logger.info(f"Placing all additional sequences from {sequences}")
@@ -279,6 +289,9 @@ class PolytomyResolutionPipeline:
                 self.final_tree = placer.batch_place_sequences(sequences)
             else:
                 self.final_tree = placer.place_sequences(sequences)
+                
+            # Store the alignment used for placement
+            self.placement_alignment = placer.last_placement_alignment
 
         if not self.final_tree:
             self.logger.error("Sequence placement failed")
@@ -303,30 +316,103 @@ class PolytomyResolutionPipeline:
         Returns:
             bool: True if grafting succeeded, False otherwise
         """
-        if not self.optimized_tree and not self.final_tree:
-            self.logger.error("No tree available for grafting. Run resolve_polytomies() first.")
+        # First debug tree references
+        self.logger.info(f"DEBUG tree references before selecting grafting tree:")
+        for attr in ['final_tree', 'optimized_tree', 'resolved_tree']:
+            if hasattr(self, attr) and getattr(self, attr) is not None:
+                tree_obj = getattr(self, attr)
+                self.logger.info(f"  {attr}: {len(tree_obj.leaf_nodes())} tips")
+        
+        # Find the tree with the most tips
+        tree_sizes = []
+        if hasattr(self, 'final_tree') and self.final_tree:
+            final_tips = len(self.final_tree.leaf_nodes())
+            tree_sizes.append((self.final_tree, final_tips, "final"))
+            self.logger.info(f"Final tree has {final_tips} tips")
+
+        if hasattr(self, 'optimized_tree') and self.optimized_tree:
+            optimized_tips = len(self.optimized_tree.leaf_nodes())
+            tree_sizes.append((self.optimized_tree, optimized_tips, "optimized"))
+            self.logger.info(f"Optimized tree has {optimized_tips} tips")
+            
+        if hasattr(self, 'resolved_tree') and self.resolved_tree:
+            resolved_tips = len(self.resolved_tree.leaf_nodes())
+            tree_sizes.append((self.resolved_tree, resolved_tips, "resolved"))
+            self.logger.info(f"Resolved tree has {resolved_tips} tips")
+            
+        if not tree_sizes:
+            self.logger.error("No trees available for grafting second exemplars")
             return False
+            
+        # Sort by number of tips (descending)
+        tree_sizes.sort(key=lambda x: x[1], reverse=True)
         
-        # Use the most advanced tree available
-        tree_to_use = self.final_tree if self.final_tree else self.optimized_tree
+        # Use the tree with the most tips
+        tree_to_use, tip_count, tree_name = tree_sizes[0]
+        self.logger.info(f"Using {tree_name} tree with {tip_count} tips for grafting (has most tips)")
         
-        self.logger.info(f"Grafting second exemplars from {pairs_file}")
-        
-        # Initialize placer with the current tree
-        placer = SequencePlacer(tree_to_use, config=self.config.get('placer', {}))
+        # Configure the sequence placer
+        placer_config = self.config.get('placer', {})
+        placer = SequencePlacer(tree_to_use, config=placer_config)
         
         # Graft second exemplars
-        grafted_tree = placer.graft_second_exemplars(alignment, pairs_file)
+        self.logger.info(f"Grafting second exemplars from {pairs_file}")
+        self.final_tree = placer.graft_second_exemplars(alignment, pairs_file)
         
-        if not grafted_tree:
-            self.logger.error("Failed to graft second exemplars")
+        # Store the alignment used for grafting - important for subsequent optimization 
+        self.placement_alignment = placer.last_placement_alignment
+        self.logger.info(f"Updated placement alignment path to: {self.placement_alignment}")
+        
+        if not self.final_tree:
+            self.logger.error("Second exemplar grafting failed")
+            # Fall back to previous tree
+            self.final_tree = tree_to_use
             return False
-        
-        # Update the final tree
-        self.final_tree = grafted_tree
-        
+            
         self.logger.info("Second exemplars grafted successfully")
         return True
+        
+    def optimize_tree_after_placement(self, alignment=None):
+        """
+        Optimize branch lengths on the tree after sequence placement.
+        
+        Args:
+            alignment (str, optional): Path to alignment file. If None, uses the 
+                                    placement alignment stored during placement/grafting.
+        
+        Returns:
+            bool: True if optimization succeeded, False otherwise.
+        """
+        if not self.final_tree:
+            self.logger.error("No tree available for optimization after placement")
+            return False
+            
+        # Use placement alignment if available and no specific alignment provided
+        if alignment is None and hasattr(self, 'placement_alignment') and self.placement_alignment:
+            alignment = self.placement_alignment
+            self.logger.info(f"Using placement alignment for optimization: {alignment}")
+        
+        if not alignment:
+            self.logger.warning("No alignment available for branch length optimization after placement")
+            return False
+        
+        # Configure the optimizer
+        optimizer_config = self.config.get('optimizer', {})
+        optimizer = BranchLengthOptimizer(self.final_tree, 
+                                        tool=self.config.get('optimization_tool', 'iqtree'),
+                                        config=optimizer_config)
+        
+        # Optimize the tree
+        self.logger.info(f"Optimizing final tree with {len(self.final_tree.leaf_nodes())} tips")
+        optimized_tree = optimizer.optimize_branch_lengths(alignment)
+        
+        if optimized_tree:
+            self.final_tree = optimized_tree
+            self.logger.info("Tree optimization completed successfully")
+            return True
+        else:
+            self.logger.error("Tree optimization failed")
+            return False
 
     def write_tree(self, output_path, format='newick'):
         """

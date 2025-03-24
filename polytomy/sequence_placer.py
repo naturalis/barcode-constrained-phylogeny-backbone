@@ -38,6 +38,8 @@ class SequencePlacer:
         self.backbone_tree = backbone_tree
         self.config = config or {}
         self.logger = logging.getLogger(__name__)
+        self.last_placement_alignment = None  # Track most recently created placement alignment
+        self.final_tree = None  # Track the final tree after all placements
 
         # Configure placement parameters
         self.threads = self.config.get('threads', 52)
@@ -151,6 +153,59 @@ class SequencePlacer:
             self.logger.error(f"Error compressing alignment: {e}")
             return None
 
+    # Add the _preserve_taxon_labels method
+    def _preserve_taxon_labels(self, tree, schema="newick"):
+        """Ensure taxon labels are preserved exactly when writing tree files"""
+        import tempfile
+        output = tempfile.NamedTemporaryFile(delete=False, suffix='.nwk')
+        output.close()
+        tree.write(
+            path=output.name,
+            schema=schema,
+            suppress_rooting=True,
+            suppress_internal_node_labels=False, 
+            suppress_edge_lengths=False,
+            unquoted_underscores=True
+        )
+        return output.name
+    
+    def _create_sequence_id_map(self, tree_tips, alignment_seqs):
+        """Create a mapping between possibly truncated tree IDs and full alignment IDs."""
+        id_map = {}
+        missing_ids = []
+        
+        # Log sample IDs for debugging
+        sample_tree_tips = list(tree_tips)[:5]
+        sample_alignment_ids = list(alignment_seqs.keys())[:5]
+        self.logger.debug(f"Sample tree tips: {sample_tree_tips}")
+        self.logger.debug(f"Sample alignment IDs: {sample_alignment_ids}")
+        
+        for tip_id in tree_tips:
+            # First try exact match
+            if tip_id in alignment_seqs:
+                id_map[tip_id] = tip_id
+                continue
+                
+            # Try to find if this is a truncated ID
+            found = False
+            for seq_id in alignment_seqs:
+                # Check if tip_id is a suffix of seq_id
+                if seq_id.endswith(tip_id) and len(seq_id) > len(tip_id):
+                    id_map[tip_id] = seq_id
+                    self.logger.info(f"Mapped truncated ID {tip_id} to full ID {seq_id}")
+                    found = True
+                    break
+                    
+            if not found:
+                missing_ids.append(tip_id)
+        
+        self.logger.info(f"Created ID map with {len(id_map)} entries")
+        if missing_ids:
+            self.logger.warning(f"Could not find matches for {len(missing_ids)} IDs")
+            self.logger.debug(f"Sample missing IDs: {missing_ids[:5]}")
+            
+        return id_map
+
     def place_sequences(self, alignment: str, prefilter: bool = False, compress: bool = True) -> Tree:
         """
         Place sequences onto the backbone.
@@ -180,6 +235,32 @@ class SequencePlacer:
                     if compressed:
                         alignment_to_use = compressed
 
+                # NEW: Read alignment to create ID map
+                all_sequences = SeqIO.to_dict(SeqIO.parse(alignment_to_use, "fasta"))
+                tree_tips = [tip.taxon.label for tip in self.backbone_tree.leaf_node_iter()]
+                
+                # NEW: Create mapping between tree IDs and alignment IDs
+                id_map = self._create_sequence_id_map(tree_tips, all_sequences)
+                self.logger.info(f"Created ID map with {len(id_map)} entries for sequence placement")
+                
+                # NEW: Create a modified alignment with tree IDs if we found mappings
+                if len(id_map) > 0:
+                    mapped_alignment_path = os.path.join(temp_dir, "mapped_alignment.fa")
+                    with open(mapped_alignment_path, "w") as f:
+                        # First write records for mapped IDs
+                        for tree_id, aln_id in id_map.items():
+                            if aln_id in all_sequences:
+                                seq = all_sequences[aln_id]
+                                f.write(f">{tree_id}\n{str(seq.seq)}\n")
+                        
+                        # Then write any sequences not in the tree
+                        for seq_id, seq in all_sequences.items():
+                            if seq_id not in id_map.values():
+                                f.write(f">{seq_id}\n{str(seq.seq)}\n")
+                    
+                    alignment_to_use = mapped_alignment_path
+                    self.logger.info(f"Created alignment with renamed sequences to match tree IDs")
+
                 tree = self.backbone_tree
                 if prefilter and not self.config.get('skip_prefiltering', False):
                     # Filter the backbone tree to only include tips present in the alignment.
@@ -188,13 +269,8 @@ class SequencePlacer:
                         self.logger.error("Failed to filter tree based on alignment")
                         return None
 
-                # Write backbone tree to temporary file
-                backbone_path = os.path.join(temp_dir, "backbone.tree")
-                try:
-                    tree.write(path=backbone_path, schema="newick")
-                except Exception as e:
-                    self.logger.error(f"Failed to write backbone tree: {e}")
-                    return None
+                # NEW: Use _preserve_taxon_labels to write tree
+                backbone_path = self._preserve_taxon_labels(tree)
 
                 # Run sequence placement
                 placement_results = self._run_epa_placement(
@@ -259,13 +335,40 @@ class SequencePlacer:
         """
         self.logger.info("Running EPA sequence placement with RAxML")
 
-        # Build command
+        # Check which RAxML version is available
+        raxml_options = ["raxmlHPC-PTHREADS", "raxmlHPC", "raxmlHPC-AVX2", "raxmlHPC-SSE3"]
+        raxml_cmd = None
+        
+        for cmd in raxml_options:
+            try:
+                result = subprocess.run(f"which {cmd}", shell=True, stdout=subprocess.PIPE)
+                if result.returncode == 0:
+                    raxml_cmd = cmd
+                    self.logger.info(f"Using {raxml_cmd} for EPA placement")
+                    break
+            except:
+                pass
+        
+        if not raxml_cmd:
+            self.logger.error("No RAxML installation found. Please install RAxML.")
+            return None
+            
+        # Convert model format if needed (Standard RAxML uses different format)
+        epa_model = self.model
+        if "+" in epa_model:  # Convert from IQTree/RAxML-NG format to standard RAxML format
+            if epa_model == "GTR+G":
+                epa_model = "GTRGAMMA"
+            elif epa_model == "GTR+I+G":
+                epa_model = "GTRCATI"
+            self.logger.info(f"Converting model from '{self.model}' to '{epa_model}' for standard RAxML")
+        
+        # Build command with found RAxML version
         cmd = [
-            "raxmlHPC-PTHREADS",
+            raxml_cmd,
             "-f", "v",  # EPA placement algorithm
             "-t", backbone_path,  # Reference tree
             "-s", alignment_path,  # Alignment with query sequences
-            "-m", self.model,  # Model
+            "-m", epa_model,  # Model - use converted format for standard RAxML
             "-n", self.prefix,  # Output prefix
             "-T", str(self.threads),  # Threads
             "-w", temp_dir  # Working directory
@@ -395,12 +498,102 @@ class SequencePlacer:
                     self.logger.error(f"Failed to write filtered alignment: {e}")
                     return None
                 
+                # Make a persistent copy of the filtered alignment if keep_files is True
+                if self.keep_files:
+                    if not os.path.exists(self.output_dir):
+                        os.makedirs(self.output_dir)
+                    persistent_path = os.path.join(self.output_dir, "first_exemplars.fa")
+                    shutil.copy2(filtered_path, persistent_path)
+                    self.last_placement_alignment = persistent_path
+                    self.logger.info(f"Saved persistent copy of filtered alignment to {persistent_path}")
+                else:
+                    # Create a temporary file that won't be deleted when the temp directory is
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".fa")
+                    temp_file.close()
+                    shutil.copy2(filtered_path, temp_file.name)
+                    self.last_placement_alignment = temp_file.name
+                    self.logger.info(f"Saved temporary copy of filtered alignment to {temp_file.name}")
+                
                 # Use the existing place_sequences method
                 return self.place_sequences(filtered_path, prefilter=True)
         
         except Exception as e:
             self.logger.error(f"Unexpected error during first exemplar placement: {e}")
             return None
+        
+    def _create_filtered_alignment(self, alignment_path, tree, output_path=None):
+        """
+        Create a filtered alignment containing sequences for all tips in the tree.
+        
+        Args:
+            alignment_path: Path to source alignment
+            tree: Tree object with tips to match 
+            output_path: Path for output alignment (optional)
+            
+        Returns:
+            str: Path to filtered alignment
+        """
+        self.logger.info("Creating filtered alignment matching tree tips")
+        
+        # Get all tip labels from the tree
+        tip_labels = set()
+        for leaf in tree.leaf_node_iter():
+            if leaf.taxon:
+                # Add both regular and QUERY___ prefixed versions
+                tip_labels.add(leaf.taxon.label)
+                if leaf.taxon.label.startswith("QUERY___"):
+                    tip_labels.add(leaf.taxon.label[9:])  # Add without prefix
+                else:
+                    tip_labels.add(f"QUERY___{leaf.taxon.label}")  # Add with prefix
+        
+        self.logger.info(f"Tree has {len(tip_labels)} unique tips (including alternative prefixes)")
+        
+        # Read the alignment
+        try:
+            all_sequences = SeqIO.to_dict(SeqIO.parse(alignment_path, "fasta"))
+            self.logger.info(f"Read {len(all_sequences)} sequences from alignment")
+        except Exception as e:
+            self.logger.error(f"Failed to read alignment: {e}")
+            return None
+        
+        # NEW: Create mapping between tree IDs and alignment IDs
+        id_map = self._create_sequence_id_map(tip_labels, all_sequences)
+        self.logger.info(f"Created ID map with {len(id_map)} entries for filtered alignment")
+        
+        # Create records for all tips that exist in the alignment using the mapping
+        records = []
+        found_count = 0
+        
+        # First add sequences for mapped IDs
+        for tree_id, aln_id in id_map.items():
+            if aln_id in all_sequences:
+                records.append(all_sequences[aln_id])
+                found_count += 1
+        
+        # Also check direct matches for any labels not in the mapping
+        for tip_label in tip_labels:
+            if tip_label not in id_map and tip_label in all_sequences:
+                records.append(all_sequences[tip_label])
+                found_count += 1
+        
+        self.logger.info(f"Found {found_count} matching sequences for tree tips")
+        
+        # Set output path if not provided
+        if not output_path:
+            # Create a temporary file with a descriptive name
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".fa")
+            temp_file.close()
+            output_path = temp_file.name
+        
+        # Write the filtered alignment
+        try:
+            SeqIO.write(records, output_path, "fasta")
+            self.logger.info(f"Created filtered alignment with {len(records)} sequences at {output_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to write filtered alignment: {e}")
+            return None
+            
+        return output_path
 
     def graft_second_exemplars(self, alignment_path: str, pairs_file: str) -> Tree:
         """
@@ -420,6 +613,13 @@ class SequencePlacer:
         """
         self.logger.info(f"Grafting second exemplars from {pairs_file}")
         
+        # Store the alignment path for later optimization
+        self.last_placement_alignment = alignment_path
+
+        # DIAGNOSTIC: Print some sample tip labels to see what's in the tree
+        sample_tips = [leaf.taxon.label for leaf in list(self.backbone_tree.leaf_node_iter())[:5]]
+        self.logger.info(f"Sample tip labels: {sample_tips}")
+        
         # Read the alignment
         alignment = SeqIO.to_dict(SeqIO.parse(alignment_path, "fasta"))
         
@@ -429,48 +629,69 @@ class SequencePlacer:
             for line in f:
                 if line.strip() and not line.startswith('#'):
                     parts = line.strip().split('\t')
-                    if len(parts) >= 3:  # Ensure we have taxon + at least 2 exemplars
+                    if len(parts) >= 3 and parts[1] and parts[2]:  # Ensure we have valid entries
                         taxon = parts[0]
                         exemplar1 = parts[1]
                         exemplar2 = parts[2]
                         pairs[taxon] = [exemplar1, exemplar2]
         
-        # Get current tips in tree
-        current_tips = {leaf.taxon.label for leaf in self.backbone_tree.leaf_node_iter()}
+        self.logger.info(f"Read {len(pairs)} exemplar pairs")
+        
+        # Create a dictionary mapping tip labels to their nodes for efficient lookup
+        tip_nodes = {}
+        for leaf in self.backbone_tree.leaf_node_iter():
+            if leaf.taxon:
+                tip_nodes[leaf.taxon.label] = leaf
+        
+        self.logger.info(f"Tree has {len(tip_nodes)} tips")
+        
+        # Build a set of all tip IDs (both with and without the QUERY___ prefix)
+        tip_ids = set(tip_nodes.keys())
+        
+        # Create a mapping from first exemplar to node, considering both prefixed and unprefixed versions
+        exemplar_nodes = {}
+        for exemplar_id in [ex[0] for ex in pairs.values()]:
+            if exemplar_id in tip_ids:
+                exemplar_nodes[exemplar_id] = tip_nodes[exemplar_id]
+            elif f"QUERY___{exemplar_id}" in tip_ids:
+                exemplar_nodes[exemplar_id] = tip_nodes[f"QUERY___{exemplar_id}"]
+        
+        self.logger.info(f"Found {len(exemplar_nodes)} matching first exemplars in tree")
         
         # Clone the tree to avoid modifying the original
         tree = dendropy.Tree(self.backbone_tree)
         
+        # Map the nodes from original tree to cloned tree
+        tip_node_map = {}
+        for leaf in tree.leaf_node_iter():
+            if leaf.taxon:
+                tip_node_map[leaf.taxon.label] = leaf
+        
         # Count how many exemplars we graft
         grafted_count = 0
+        skipped_count = 0
         
-        # For each pair, check if the first exemplar is in the tree
-        for taxon, exemplars in pairs.items():
-            exemplar1, exemplar2 = exemplars
-            
+        # For each pair, try to graft the second exemplar
+        for taxon, (exemplar1, exemplar2) in pairs.items():
             # Skip if second exemplar is already in the tree
-            if exemplar2 in current_tips:
+            if exemplar2 in tip_ids:
+                skipped_count += 1
                 continue
             
-            # Skip if first exemplar is not in the tree
-            if exemplar1 not in current_tips:
+            # Find first exemplar node
+            exemplar1_node = None
+            if exemplar1 in tip_node_map:
+                exemplar1_node = tip_node_map[exemplar1]
+            elif f"QUERY___{exemplar1}" in tip_node_map:
+                exemplar1_node = tip_node_map[f"QUERY___{exemplar1}"]
+            
+            if not exemplar1_node:
                 self.logger.warning(f"First exemplar {exemplar1} for taxon {taxon} not found in tree")
                 continue
                 
             # Skip if second exemplar is not in the alignment
             if exemplar2 not in alignment:
                 self.logger.warning(f"Second exemplar {exemplar2} for taxon {taxon} not found in alignment")
-                continue
-            
-            # Find the node for the first exemplar
-            exemplar1_node = None
-            for leaf in tree.leaf_node_iter():
-                if leaf.taxon and leaf.taxon.label == exemplar1:
-                    exemplar1_node = leaf
-                    break
-            
-            if not exemplar1_node:
-                self.logger.warning(f"Node for exemplar {exemplar1} not found in tree")
                 continue
             
             # Create a node for the second exemplar
@@ -506,7 +727,23 @@ class SequencePlacer:
             
             grafted_count += 1
         
-        self.logger.info(f"Grafted {grafted_count} second exemplars")
+        # After all the grafting work is done
+        self.logger.info(f"Grafted {grafted_count} second exemplars (skipped {skipped_count} already in tree)")
+        
+        # Create filtered alignment with sequences that match the tree tips
+        if self.keep_files:
+            persistent_path = os.path.join(self.output_dir, "grafted_exemplars.fa")
+            filtered_alignment = self._create_filtered_alignment(alignment_path, tree, persistent_path)
+        else:
+            filtered_alignment = self._create_filtered_alignment(alignment_path, tree)
+        
+        # Update the placement alignment reference
+        if filtered_alignment:
+            self.last_placement_alignment = filtered_alignment
+            self.logger.info(f"Created and set filtered alignment for optimization: {filtered_alignment}")
+        else:
+            self.logger.warning(f"Failed to create filtered alignment, using original: {alignment_path}")
+            
         return tree
             
     def reoptimize_tree_after_grafting(self, alignment):
